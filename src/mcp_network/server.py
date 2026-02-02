@@ -4,7 +4,8 @@ MCP Network Diagnostics Server
 
 import logging
 import sys
-from mcp.server.fastmcp import FastMCP
+from mcp_network.app import mcp
+import mcp_network.tools  # noqa: F401 - registers tools with mcp
 
 
 # log to stderr for transport
@@ -16,20 +17,6 @@ logging.basicConfig(
 
 
 logger = logging.getLogger(__name__)
-
-
-# iniialize fastmcp server
-mcp = FastMCP("network-diagnostics")
-
-
-@mcp.tool()
-async def ping() -> str:
-    """
-    Simple ping tool to verify connectivity.
-    """
-
-    logger.info("Ping tool called")
-    return "pong"
 
 
 def main():
