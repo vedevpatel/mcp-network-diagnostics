@@ -6,6 +6,8 @@ requires-python = ">=3.10"
 dependencies = [
     "mcp[cli]>=1.2.0",
     "fastmcp>=3.0.0b1",
+    "networkx>=3.0",
+    "pydantic>=2.0",
 ]
 
 [build-system]
