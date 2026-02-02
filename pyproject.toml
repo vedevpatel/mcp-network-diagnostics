@@ -3,7 +3,14 @@ name = "mcp-network"
 version = "0.1.0"
 description = "MCP server for network diagnostics"
 requires-python = ">=3.10"
+dependencies = [
+    "mcp[cli]>=1.2.0",
+    "fastmcp>=3.0.0b1",
+]
 
 [build-system]
-requires = ["setuptools"]
+requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
+
+[project.scripts]
+mcp-network = "mcp_network.__main__:main"
