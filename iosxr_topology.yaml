@@ -1,0 +1,29 @@
+# IOS-XR Network Topology Configuration
+# This file defines Cisco IOS-XR devices to monitor via SSH.
+
+devices:
+  # Cisco DevNet Sandbox (Always-On IOS-XR Router)
+  - id: devnet-iosxr-1
+    type: router
+    host: sandbox-iosxr-1.cisco.com
+    username: vedevpatel
+    password: If0g_-bS0R9aT8S
+    port: 22
+
+  # Example: Add your own IOS-XR router
+  # - id: router-1
+  #   type: router
+  #   host: 192.168.1.1
+  #   username: admin
+  #   password: your_password
+  #   port: 22
+
+links:
+  # Define links between routers
+  # Example:
+  # - src_device: router-1
+  #   src_interface: GigabitEthernet0/0/0/0
+  #   dst_device: router-2
+  #   dst_interface: GigabitEthernet0/0/0/0
+  #   default_latency_ms: 2.0
+  []

@@ -30,7 +30,7 @@ def main():
     parser.add_argument(
         "--collector",
         type=str,
-        choices=["simulated", "prometheus"],
+        choices=["simulated", "prometheus", "iosxr"],
         default=os.getenv("MCP_NETWORK_COLLECTOR", "simulated"),
         help="Network data collector type (default: simulated)"
     )

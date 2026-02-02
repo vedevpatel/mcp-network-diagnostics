@@ -22,9 +22,11 @@ def get_network():
     global _collector_instance
 
     if _collector_instance is None:
+
         if _collector_type == "simulated":
             from mcp_network.collectors.simulated import SimulatedCollector
             _collector_instance = SimulatedCollector()
+
         elif _collector_type == "prometheus":
             from mcp_network.collectors.prometheus import PrometheusCollector
             _collector_instance = PrometheusCollector(
@@ -32,6 +34,14 @@ def get_network():
                 topology_file=_collector_config.get("topology_file"),
                 cache_ttl=_collector_config.get("cache_ttl", 30)
             )
+
+        elif _collector_type == "iosxr":
+            from mcp_network.collectors.iosxr import IOSXRCollector
+            _collector_instance = IOSXRCollector(
+                topology_file=_collector_config.get("topology_file"),
+                ssh_timeout=_collector_config.get("ssh_timeout", 30)
+            )
+            
         else:
             raise ValueError(f"Unknown collector type: {_collector_type}")
 
