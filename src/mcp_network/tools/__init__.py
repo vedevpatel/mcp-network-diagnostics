@@ -5,7 +5,7 @@ Network diagnostic MCP tools
 import json
 from datetime import datetime, timezone
 from mcp_network.app import mcp
-from mcp_network.collectors.simulated import get_network
+from mcp_network.collectors import get_network
 from mcp_network.graph.pathfinder import find_path, get_path_details, calculate_total_latency
 
 
