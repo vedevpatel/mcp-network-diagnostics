@@ -1,0 +1,5 @@
+Interface                      IP-Address      Status          Protocol Vrf-Name
+Loopback0                      1.1.1.1         Up              Up       default
+MgmtEth0/RP0/CPU0/0            10.10.20.175    Up              Up       default
+GigabitEthernet0/0/0/0         unassigned      Shutdown        Down     default
+GigabitEthernet0/0/0/1         unassigned      Shutdown        Down     default

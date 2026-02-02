@@ -1,0 +1,5 @@
+Physical Memory: 3071M total (1436M available)
+Application Memory : 2868M (1436M available)
+Image: 244M (bootram: 39M)
+Reserved: 205M, IPC: 133M, Stack: 72M
+Total shared memory:  47M (64 segments)
