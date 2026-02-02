@@ -1,0 +1,9 @@
+[project]
+name = "mcp-network"
+version = "0.1.0"
+description = "MCP server for network diagnostics"
+requires-python = ">=3.10"
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
