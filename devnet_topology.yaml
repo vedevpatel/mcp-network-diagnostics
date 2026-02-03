@@ -1,0 +1,36 @@
+# Cisco DevNet Always-On sandbox topology
+#
+# Two-device topology: one IOS-XR router, one IOS-XE router.
+# The link between them is synthetic — these sandboxes are independent
+# machines, not physically connected.  Real CPU/memory/interface metrics
+# are collected via SSH from each device.
+#
+# Set these env vars before starting the server:
+#   export DEVNET_IOSXR_USERNAME=<your username>
+#   export DEVNET_IOSXR_PASSWORD=<your password>
+#   export DEVNET_IOSXE_USERNAME=<your username>
+#   export DEVNET_IOSXE_PASSWORD=<your password>
+
+devices:
+  - id: devnet-iosxr-1
+    type: router
+    device_type: iosxr
+    host: sandbox-iosxr-1.cisco.com
+    username: ${DEVNET_IOSXR_USERNAME}
+    password: ${DEVNET_IOSXR_PASSWORD}
+    port: 22
+
+  - id: devnet-iosxe-1
+    type: router
+    device_type: iosxe
+    host: sandbox-iosxe-1.cisco.com
+    username: ${DEVNET_IOSXE_USERNAME}
+    password: ${DEVNET_IOSXE_PASSWORD}
+    port: 22
+
+links:
+  - src_device: devnet-iosxr-1
+    src_interface: GigabitEthernet0/0/0/0
+    dst_device: devnet-iosxe-1
+    dst_interface: GigabitEthernet1
+    default_latency_ms: 45.0

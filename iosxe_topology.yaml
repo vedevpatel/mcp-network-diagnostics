@@ -1,0 +1,45 @@
+# IOS-XE Network Topology Configuration
+#
+# Single-device config for the Cisco DevNet Always-On IOS-XE sandbox.
+# Use with:  --collector iosxe --topology-file iosxe_topology.yaml
+#
+# For a two-device (IOS-XR + IOS-XE) topology, use devnet_topology.yaml
+# with --collector ssh instead.
+#
+# Set these env vars before starting:
+#   export DEVNET_IOSXE_USERNAME=<your username>
+#   export DEVNET_IOSXE_PASSWORD=<your password>
+
+devices:
+  - id: devnet-iosxe-1
+    type: router
+    host: sandbox-iosxe-1.cisco.com
+    username: ${DEVNET_IOSXE_USERNAME}
+    password: ${DEVNET_IOSXE_PASSWORD}
+    port: 22
+
+  # CML IOSv routers (restore when you have CML network access)
+  # - id: iosv-1
+  #   type: router
+  #   host: 10.255.0.10
+  #   username: cisco
+  #   password: cisco
+  #   port: 22
+  #
+  # - id: iosv-2
+  #   type: router
+  #   host: 10.255.0.12
+  #   username: cisco
+  #   password: cisco
+  #   port: 22
+
+links:
+  # Links require multiple reachable devices.
+  # Restore when using CML or your own multi-device topology:
+  #
+  # - src_device: iosv-0
+  #   src_interface: GigabitEthernet0/1
+  #   dst_device: iosv-1
+  #   dst_interface: GigabitEthernet0/1
+  #   default_latency_ms: 2.0
+  []

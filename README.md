@@ -113,8 +113,111 @@ Update `~/Library/Application Support/Claude/claude_desktop_config.json`:
 }
 ```
 
+### SSH Collector (Cisco DevNet or your own routers)
+Connect to real Cisco routers via SSH. Supports IOS-XR, IOS-XE, or a
+mix of both in a single topology file.
+
+#### Quickstart with DevNet Always-On sandboxes
+
+DevNet provides free, always-on Cisco routers — no VPN or lab setup needed.
+Get your credentials from [developer.cisco.com](https://developer.cisco.com).
+
+```bash
+export DEVNET_IOSXR_USERNAME=<your username>
+export DEVNET_IOSXR_PASSWORD=<your password>
+export DEVNET_IOSXE_USERNAME=<your username>
+export DEVNET_IOSXE_PASSWORD=<your password>
+
+mcp-network --collector ssh --topology-file devnet_topology.yaml
+```
+
+`devnet_topology.yaml` connects to both sandboxes and declares a synthetic
+link between them so that path-finding and latency diagnosis work across
+the two devices.
+
+#### Claude Desktop integration
+
+Update `~/Library/Application Support/Claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "network-diagnostics": {
+      "command": "/Users/vedpatel/.local/bin/uv",
+      "args": [
+        "--directory",
+        "/path/to/mcp-network-diagnostics",
+        "run",
+        "mcp-network",
+        "--collector",
+        "ssh",
+        "--topology-file",
+        "/path/to/devnet_topology.yaml"
+      ],
+      "env": {
+        "DEVNET_IOSXR_USERNAME": "your_username",
+        "DEVNET_IOSXR_PASSWORD": "your_password",
+        "DEVNET_IOSXE_USERNAME": "your_username",
+        "DEVNET_IOSXE_PASSWORD": "your_password"
+      }
+    }
+  }
+}
+```
+
+Then ask Claude things like:
+- "What's the status of devnet-iosxr-1?"
+- "Diagnose latency from devnet-iosxr-1 to devnet-iosxe-1"
+
+#### Using your own routers
+
+Copy `devnet_topology.yaml` to `mynetwork_topology.local.yaml` (the
+`.local.yaml` suffix is gitignored), edit in your device IPs and
+`${VAR}` placeholders or literal values, and point the server at it:
+
+```bash
+mcp-network --collector ssh --topology-file mynetwork_topology.local.yaml
+```
+
+Set `device_type: iosxr` or `device_type: iosxe` on each device so the
+collector picks the right show commands and parsers.
+
+---
+
+## Topology file format
+
+All topology files are YAML with the same structure:
+
+```yaml
+devices:
+  - id: my-router          # unique ID used in tool calls
+    type: router            # router or switch
+    device_type: iosxr      # iosxr or iosxe (ssh collector only)
+    host: 192.168.1.1
+    username: ${MY_USER}    # literal value or ${ENV_VAR} placeholder
+    password: ${MY_PASS}
+    port: 22
+
+links:
+  - src_device: my-router
+    src_interface: GigabitEthernet0/0/0/0
+    dst_device: other-router
+    dst_interface: GigabitEthernet1
+    default_latency_ms: 2.0
+```
+
+**`${VAR_NAME}` placeholders** are replaced with the value of the
+environment variable `VAR_NAME` at startup. The server exits with a
+clear error if any referenced variable is not set.
+
+**`.local.yaml` convention** — files matching `*_topology.local.yaml`
+are gitignored. Copy an example topology to a `.local.yaml` file when
+you want to fill in real credentials without committing them.
+
+---
+
 ## Current Limitations
 - Read-only (no device configuration changes)
 - Static topology (define devices/links in YAML)
-- node_exporter metrics only (SNMP planned for future)
+- DevNet sandbox credentials rotate periodically; if SSH fails, grab fresh credentials from developer.cisco.com
 - Tested with Claude; other LLMs may vary
