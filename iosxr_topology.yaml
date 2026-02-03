@@ -6,8 +6,8 @@ devices:
   - id: devnet-iosxr-1
     type: router
     host: sandbox-iosxr-1.cisco.com
-    username: vedevpatel
-    password: If0g_-bS0R9aT8S
+    username: ${DEVNET_IOSXR_USERNAME}
+    password: ${DEVNET_IOSXR_PASSWORD}
     port: 22
 
   # Example: Add your own IOS-XR router

@@ -13,21 +13,30 @@ Usage:
 """
 
 from netmiko import ConnectHandler
+import os
 import sys
 
 
 def main():
     """Test IOS-XR connection and commands."""
 
+    # Credentials from environment variables
+    username = os.environ.get("DEVNET_IOSXR_USERNAME")
+    password = os.environ.get("DEVNET_IOSXR_PASSWORD")
+    if not username or not password:
+        print("Error: set DEVNET_IOSXR_USERNAME and DEVNET_IOSXR_PASSWORD env vars", file=sys.stderr)
+        return 1
+
     # Device connection parameters
     device = {
         'device_type': 'cisco_xr',  # IMPORTANT: Not cisco_ios!
         'host': 'sandbox-iosxr-1.cisco.com',
-        'username': 'vedevpatel',
-        'password': 'If0g_-bS0R9aT8S',
+        'username': username,
+        'password': password,
         'port': 22,
-        'timeout': 30,  # SSH connection timeout
-        'session_timeout': 60,  # Command execution timeout
+        'timeout': 60,  # SSH connection timeout
+        'banner_timeout': 60,  # SSH banner read timeout (important for slow connections)
+        'session_timeout': 120,  # Command execution timeout
     }
 
     print("=" * 70)
