@@ -1,7 +1,6 @@
 """Prometheus-based network collector."""
 import logging
 import networkx as nx
-import yaml
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
 from prometheus_api_client import PrometheusConnect
@@ -73,17 +72,8 @@ class PrometheusCollector:
 
     def _load_topology(self, topology_file: str) -> dict:
         """Load network topology from YAML configuration."""
-        try:
-            with open(topology_file, 'r') as f:
-                topology = yaml.safe_load(f)
-            logger.info(f"Loaded topology: {len(topology['devices'])} devices, {len(topology['links'])} links")
-            return topology
-        except FileNotFoundError:
-            logger.error(f"Topology file not found: {topology_file}")
-            raise
-        except yaml.YAMLError as e:
-            logger.error(f"Invalid YAML in topology file: {e}")
-            raise
+        from mcp_network.collectors.topology_loader import load_topology
+        return load_topology(topology_file)
 
     def _query_metric(
         self,

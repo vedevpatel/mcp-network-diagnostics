@@ -7,7 +7,6 @@ by parsing CLI command output.
 
 import logging
 import networkx as nx
-import yaml
 from typing import Dict, Optional
 from netmiko import ConnectHandler
 from mcp_network.models.network import Device, Interface, Link
@@ -52,23 +51,9 @@ class IOSXRCollector:
         self._refresh_metrics()
 
     def _load_topology(self, topology_file: str) -> dict:
-        """
-        Load network topology from YAML configuration.
-        """
-        try:
-            with open(topology_file, 'r') as f:
-                topology = yaml.safe_load(f)
-            logger.info(
-                f"Loaded IOS-XR topology: {len(topology['devices'])} devices, "
-                f"{len(topology['links'])} links"
-            )
-            return topology
-        except FileNotFoundError:
-            logger.error(f"Topology file not found: {topology_file}")
-            raise
-        except yaml.YAMLError as e:
-            logger.error(f"Invalid YAML in topology file: {e}")
-            raise
+        """Load network topology from YAML configuration."""
+        from mcp_network.collectors.topology_loader import load_topology
+        return load_topology(topology_file)
 
     def _connect_device(self, device_config: dict) -> Optional[ConnectHandler]:
         """
