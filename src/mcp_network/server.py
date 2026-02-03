@@ -20,6 +20,20 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+# Configure collector from environment variables at module load time
+# This ensures tools are registered when mcp dev imports the module
+from mcp_network.collectors import configure_collector
+configure_collector(
+    collector_type=os.getenv("MCP_NETWORK_COLLECTOR", "simulated"),
+    prometheus_url=os.getenv("MCP_NETWORK_PROMETHEUS_URL", "http://localhost:9090"),
+    topology_file=os.getenv("MCP_NETWORK_TOPOLOGY_FILE", "network_topology.yaml"),
+    cache_ttl=int(os.getenv("MCP_NETWORK_CACHE_TTL", "30"))
+)
+
+# Import tools to register them with the mcp server
+import mcp_network.tools  # noqa: F401
+
+
 def main():
     """
     Main entry point for the MCP server.
@@ -30,7 +44,7 @@ def main():
     parser.add_argument(
         "--collector",
         type=str,
-        choices=["simulated", "prometheus", "iosxr"],
+        choices=["simulated", "prometheus", "iosxr", "iosxe", "ssh"],
         default=os.getenv("MCP_NETWORK_COLLECTOR", "simulated"),
         help="Network data collector type (default: simulated)"
     )
@@ -58,16 +72,13 @@ def main():
 
     args = parser.parse_args()
 
-    # Initialize collector based on type
-    from mcp_network.collectors import configure_collector
+    # Re-configure collector with CLI args (overrides env vars)
     configure_collector(
         collector_type=args.collector,
         prometheus_url=args.prometheus_url,
         topology_file=args.topology_file,
         cache_ttl=args.cache_ttl
     )
-
-    import mcp_network.tools  # noqa: F401
 
     logger.info(f"Starting MCP Network Diagnostics Server with {args.collector} collector")
     mcp.run(transport="stdio")

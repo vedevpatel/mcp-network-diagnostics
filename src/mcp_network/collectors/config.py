@@ -41,7 +41,21 @@ def get_network():
                 topology_file=_collector_config.get("topology_file"),
                 ssh_timeout=_collector_config.get("ssh_timeout", 30)
             )
-            
+
+        elif _collector_type == "iosxe":
+            from mcp_network.collectors.iosxe import IOSXECollector
+            _collector_instance = IOSXECollector(
+                topology_file=_collector_config.get("topology_file"),
+                ssh_timeout=_collector_config.get("ssh_timeout", 30)
+            )
+
+        elif _collector_type == "ssh":
+            from mcp_network.collectors.ssh import SSHCollector
+            _collector_instance = SSHCollector(
+                topology_file=_collector_config.get("topology_file"),
+                ssh_timeout=_collector_config.get("ssh_timeout", 30)
+            )
+
         else:
             raise ValueError(f"Unknown collector type: {_collector_type}")
 
