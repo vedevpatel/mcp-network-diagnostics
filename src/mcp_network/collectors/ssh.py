@@ -1,8 +1,8 @@
 """
 Generic SSH collector for mixed Cisco platform topologies.
 
-Reads device_type (iosxr | iosxe) per device in the topology YAML
-and dispatches to the correct Netmiko device type, show commands,
+Reads device_type (iosxr | iosxe | nxos) per device in the topology
+YAML and dispatches to the correct Netmiko device type, show commands,
 and parsers automatically.
 """
 
@@ -14,6 +14,7 @@ from mcp_network.models.network import Device, Interface, Link
 from mcp_network.collectors.topology_loader import load_topology
 from mcp_network.parsers import iosxr as iosxr_parsers
 from mcp_network.parsers import iosxe as iosxe_parsers
+from mcp_network.parsers import nxos as nxos_parsers
 
 logger = logging.getLogger(__name__)
 
@@ -21,9 +22,12 @@ logger = logging.getLogger(__name__)
 NETMIKO_TYPES = {
     "iosxr": "cisco_xr",
     "iosxe": "cisco_ios",
+    "nxos": "cisco_nxos",
 }
 
-# Show commands per platform.  cpu=None means no CPU command (default 50.0).
+# Show commands per platform.
+# cpu=None means no separate CPU command (default 50.0).
+# system_resources=<cmd> means one command returns both CPU and memory (NX-OS).
 COMMANDS = {
     "iosxr": {
         "memory": "show memory summary",
@@ -35,9 +39,16 @@ COMMANDS = {
         "cpu": "show processes cpu",
         "intf_brief": "show ip interface brief",
     },
+    "nxos": {
+        "system_resources": "show system resources",
+        "memory": None,
+        "cpu": None,
+        "intf_brief": "show interface brief",
+    },
 }
 
-# Parser functions per platform
+# Parser functions per platform.
+# system_resources=<fn> means one parser returns both cpu_percent and memory_percent.
 PARSERS = {
     "iosxr": {
         "memory": iosxr_parsers.parse_memory_summary,
@@ -50,6 +61,13 @@ PARSERS = {
         "cpu": iosxe_parsers.parse_cpu_usage,
         "intf_brief": iosxe_parsers.parse_interface_brief,
         "intf_detail": iosxe_parsers.parse_interface_detail,
+    },
+    "nxos": {
+        "system_resources": nxos_parsers.parse_system_resources,
+        "memory": None,
+        "cpu": None,
+        "intf_brief": nxos_parsers.parse_interface_brief,
+        "intf_detail": nxos_parsers.parse_interface_detail,
     },
 }
 
@@ -111,17 +129,27 @@ class SSHCollector:
             return None
 
         try:
-            # --- CPU ---
-            cpu_usage = 50.0  # default when platform has no CPU command
-            if cmds["cpu"] and parsers["cpu"]:
-                cpu_output = conn.send_command(cmds["cpu"])
-                cpu_usage = parsers["cpu"](cpu_output)
+            # --- CPU + Memory ---
+            cpu_usage = 50.0
+            memory_usage = 0.0
 
-            # --- Memory ---
-            mem_output = conn.send_command(cmds["memory"])
-            mem_data = parsers["memory"](mem_output)
-            # IOS-XR key: used_percent  |  IOS-XE key: usage_percent
-            memory_usage = mem_data.get("used_percent") or mem_data.get("usage_percent", 0.0)
+            if cmds.get("system_resources") and parsers.get("system_resources"):
+                # NX-OS: single command returns both CPU and memory
+                sr_output = conn.send_command(cmds["system_resources"])
+                sr_data = parsers["system_resources"](sr_output)
+                cpu_usage = sr_data.get("cpu_percent", 50.0)
+                memory_usage = sr_data.get("memory_percent", 0.0)
+            else:
+                # IOS-XR / IOS-XE: separate commands
+                if cmds["cpu"] and parsers["cpu"]:
+                    cpu_output = conn.send_command(cmds["cpu"])
+                    cpu_usage = parsers["cpu"](cpu_output)
+
+                if cmds["memory"] and parsers["memory"]:
+                    mem_output = conn.send_command(cmds["memory"])
+                    mem_data = parsers["memory"](mem_output)
+                    # IOS-XR key: used_percent  |  IOS-XE key: usage_percent
+                    memory_usage = mem_data.get("used_percent") or mem_data.get("usage_percent", 0.0)
 
             # --- Interfaces ---
             brief_output = conn.send_command(cmds["intf_brief"])
