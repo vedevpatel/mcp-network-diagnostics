@@ -93,13 +93,13 @@ def calculate_total_latency(graph: nx.Graph, path: list[str]) -> float:
 def find_all_paths(graph: nx.Graph, src: str, dst: str, cutoff: Optional[int] = 5) -> list[list[str]]:
     """
     Find all simple paths between two devices (up to cutoff length).
-    
+
     Args:
         graph: NetworkX graph of network topology
         src: Source device ID
         dst: Destination device ID
         cutoff: Maximum path length to search (default: 5 hops)
-    
+
     Returns:
         List of paths, each path is a list of device IDs
     """
@@ -110,3 +110,57 @@ def find_all_paths(graph: nx.Graph, src: str, dst: str, cutoff: Optional[int] = 
         return []
     except nx.NodeNotFound:
         return []
+
+
+def find_alternate_paths(
+    graph: nx.Graph,
+    primary: list[str],
+    bottleneck_devices: set[str],
+    cutoff: Optional[int] = 5,
+) -> list[dict]:
+    """
+    Find alternate paths that avoid one or more bottleneck devices.
+
+    Enumerates all simple paths from primary[0] to primary[-1], drops the
+    primary path itself, scores each candidate by total latency, and tags
+    each one with which bottleneck devices it successfully avoids.
+
+    Args:
+        graph: NetworkX graph of the network topology.
+        primary: The current shortest path (list of device IDs).
+        bottleneck_devices: Set of device IDs that carry findings (the
+            devices we'd like an alternate to route around).
+        cutoff: Maximum hop count to consider (default: 5).
+
+    Returns:
+        List of dicts sorted by latency (ascending), each containing:
+            path            – ordered list of device IDs
+            total_latency_ms – sum of edge latencies along the path
+            avoids          – subset of bottleneck_devices not on this path
+            avoids_all      – True if the path skips every bottleneck device
+    """
+    if len(primary) < 2:
+        return []
+
+    src, dst = primary[0], primary[-1]
+    all_paths = find_all_paths(graph, src, dst, cutoff=cutoff)
+
+    candidates = []
+    for path in all_paths:
+        if path == primary:
+            continue
+
+        latency = calculate_total_latency(graph, path)
+        avoids = bottleneck_devices - set(path)
+
+        candidates.append({
+            "path": path,
+            "total_latency_ms": round(latency, 2),
+            "avoids": sorted(avoids),
+            "avoids_all": avoids == bottleneck_devices,
+        })
+
+    # Best alternates first: prefer those that avoid all bottlenecks,
+    # then sort by latency within each tier.
+    candidates.sort(key=lambda c: (not c["avoids_all"], c["total_latency_ms"]))
+    return candidates

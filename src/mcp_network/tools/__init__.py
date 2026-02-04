@@ -6,7 +6,7 @@ import json
 from datetime import datetime, timezone
 from mcp_network.app import mcp
 from mcp_network.collectors import get_network
-from mcp_network.graph.pathfinder import find_path, get_path_details, calculate_total_latency
+from mcp_network.graph.pathfinder import find_path, get_path_details, calculate_total_latency, find_alternate_paths
 
 
 # Default thresholds — overridden by "thresholds:" block in topology YAML
@@ -298,6 +298,20 @@ async def diagnose_latency(src_device: str, dst_device: str) -> str:
         else:
             summary = "No anomalies detected. Path appears healthy."
         
+        # Alternate-path suggestion — only when there's something to avoid
+        alternate = None
+        if findings:
+            bottleneck_devices = {f["device"] for f in findings}
+            candidates = find_alternate_paths(network.graph, path, bottleneck_devices)
+            if candidates:
+                best = candidates[0]
+                alternate = {
+                    "path": best["path"],
+                    "total_latency_ms": best["total_latency_ms"],
+                    "avoids_devices": best["avoids"],
+                    "avoids_all_bottlenecks": best["avoids_all"],
+                }
+
         # Build result
         result = {
             "src_device": src_device,
@@ -308,7 +322,8 @@ async def diagnose_latency(src_device: str, dst_device: str) -> str:
             "findings": findings,
             "summary": summary,
             "health_status": "issue_detected" if findings else "healthy",
-            "recommendation": _generate_recommendation(findings),
+            "recommendation": _generate_recommendation(findings, alternate),
+            "alternate_path": alternate,
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
         
@@ -323,13 +338,13 @@ async def diagnose_latency(src_device: str, dst_device: str) -> str:
         return json.dumps(error_result, indent=2)
 
 
-def _generate_recommendation(findings: list[dict]) -> str:
-    """Generate recs based on findings."""
+def _generate_recommendation(findings: list[dict], alternate: dict | None = None) -> str:
+    """Generate recs based on findings and, when available, an alternate path."""
     if not findings:
         return "No action needed. Network path is operating normally."
-    
+
     recommendations = []
-    
+
     for finding in findings:
         if finding["type"] == "high_cpu":
             recommendations.append(f"Investigate high CPU on {finding['device']} - check running processes and traffic load")
@@ -337,8 +352,16 @@ def _generate_recommendation(findings: list[dict]) -> str:
             recommendations.append(f"Consider upgrading bandwidth on {finding['device']} {finding['interface']} or rerouting traffic")
         elif finding["type"] == "high_errors":
             recommendations.append(f"Check physical layer on {finding['device']} {finding['interface']} - inspect cables and optics")
-    
-    return " | ".join(recommendations[:3])  # Top 3 recommendations
+
+    if alternate:
+        via = " → ".join(alternate["path"])
+        if alternate["avoids_all_bottlenecks"]:
+            recommendations.append(f"Alternate path avoids all bottlenecks: {via} ({alternate['total_latency_ms']} ms)")
+        else:
+            avoids_str = ", ".join(alternate["avoids_devices"])
+            recommendations.append(f"Alternate path avoids {avoids_str}: {via} ({alternate['total_latency_ms']} ms)")
+
+    return " | ".join(recommendations[:3])
 
 
 @mcp.tool()
