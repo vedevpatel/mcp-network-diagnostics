@@ -350,3 +350,49 @@ async def diagnose_from_here(dst_device: str) -> str:
         }, indent=2)
 
     return await diagnose_latency(src_device=network.local_device, dst_device=dst_device)
+
+
+@mcp.tool()
+async def run_command(device_id: str, command: str) -> str:
+    """
+    Run a show command on a device and return the raw output.
+
+    Only 'show' commands are allowed — this server is read-only.
+    Useful for ad-hoc investigation after diagnose_latency flags
+    something: e.g. "show processes cpu sorted", "show queues",
+    "show ip route".
+
+    Only works with the ssh collector. Returns an error on
+    simulated or prometheus collectors.
+
+    Args:
+        device_id: Target device ID (use list_devices to find them)
+        command: A 'show' command to run (e.g. "show version")
+
+    Returns:
+        Raw command output as a string, or a JSON error.
+    """
+    if not command.strip().lower().startswith("show"):
+        return json.dumps({
+            "error": "Only 'show' commands are permitted. This server is read-only.",
+            "command": command,
+        }, indent=2)
+
+    network = get_network()
+
+    if not hasattr(network, "run_command"):
+        return json.dumps({
+            "error": "run_command requires the ssh collector. Current collector does not support live command execution.",
+            "hint": "Start the server with --collector ssh and a topology file.",
+        }, indent=2)
+
+    try:
+        output = network.run_command(device_id, command.strip())
+        return json.dumps({
+            "device_id": device_id,
+            "command": command.strip(),
+            "output": output,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }, indent=2)
+    except ValueError as e:
+        return json.dumps({"error": str(e), "device_id": device_id}, indent=2)

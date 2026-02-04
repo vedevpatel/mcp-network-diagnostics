@@ -233,3 +233,32 @@ class SSHCollector:
             )
 
         logger.info(f"SSH collector ready: {len(self.devices)} devices, {len(self.links)} links")
+
+    def _device_config(self, device_id: str) -> Optional[dict]:
+        """Look up raw topology config for a device by ID."""
+        for cfg in self.topology.get("devices", []):
+            if cfg["id"] == device_id:
+                return cfg
+        return None
+
+    def run_command(self, device_id: str, command: str) -> str:
+        """
+        Open a fresh SSH session to device_id, run command, return output.
+
+        Raises ValueError if the device is unknown or not reachable.
+        """
+        cfg = self._device_config(device_id)
+        if not cfg:
+            raise ValueError(f"Device '{device_id}' not found in topology")
+
+        conn = self._connect(cfg)
+        if not conn:
+            raise ValueError(f"SSH connection to '{device_id}' failed")
+
+        try:
+            return conn.send_command(command)
+        finally:
+            try:
+                conn.disconnect()
+            except Exception:
+                pass
