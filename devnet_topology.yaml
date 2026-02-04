@@ -12,6 +12,9 @@
 #   export DEVNET_IOSXE_USERNAME=<your username>
 #   export DEVNET_IOSXE_PASSWORD=<your password>
 
+# The device the engineer is sitting at. diagnose_from_here uses this as the source.
+local_device: devnet-iosxr-1
+
 devices:
   - id: devnet-iosxr-1
     type: router

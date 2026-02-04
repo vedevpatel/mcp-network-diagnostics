@@ -12,6 +12,7 @@ class SimulatedCollector:
         self.devices: dict[str, Device] = {}
         self.links: list[Link] = []
         self.graph: nx.Graph = nx.Graph()
+        self.local_device: str = "R1"
         self._generate_topology()
         self._build_graph()
     

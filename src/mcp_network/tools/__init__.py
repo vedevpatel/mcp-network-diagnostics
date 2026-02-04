@@ -182,37 +182,42 @@ async def diagnose_latency(src_device: str, dst_device: str) -> str:
                     "impact": "May cause packet processing delays"
                 })
             
-            # check interfaces - only those in the path
+            # check interfaces - both egress (from) and ingress (to) on each hop
+            path_interfaces = []
             for hop in hops:
                 if hop["from_device"] == device_id:
-                    interface_name = hop["from_interface"]
-                    # Find this interface
-                    interface = next((i for i in device.interfaces if i.name == interface_name), None)
-                    
-                    if interface:
-                        if interface.utilization > INTERFACE_UTILIZATION_THRESHOLD:
-                            findings.append({
-                                "device": device_id,
-                                "interface": interface.name,
-                                "type": "high_utilization",
-                                "metric": "interface_utilization",
-                                "value": round(interface.utilization, 1),
-                                "threshold": INTERFACE_UTILIZATION_THRESHOLD,
-                                "severity": "warning",
-                                "impact": "Link congestion causing queuing delays"
-                            })
-                        
-                        if interface.errors > INTERFACE_ERROR_THRESHOLD:
-                            findings.append({
-                                "device": device_id,
-                                "interface": interface.name,
-                                "type": "high_errors",
-                                "metric": "interface_errors",
-                                "value": interface.errors,
-                                "threshold": INTERFACE_ERROR_THRESHOLD,
-                                "severity": "warning",
-                                "impact": "Packet retransmissions increasing latency"
-                            })
+                    path_interfaces.append(hop["from_interface"])
+                if hop["to_device"] == device_id:
+                    path_interfaces.append(hop["to_interface"])
+
+            for interface_name in path_interfaces:
+                interface = next((i for i in device.interfaces if i.name == interface_name), None)
+                if not interface:
+                    continue
+
+                if interface.utilization > INTERFACE_UTILIZATION_THRESHOLD:
+                    findings.append({
+                        "device": device_id,
+                        "interface": interface.name,
+                        "type": "high_utilization",
+                        "metric": "interface_utilization",
+                        "value": round(interface.utilization, 1),
+                        "threshold": INTERFACE_UTILIZATION_THRESHOLD,
+                        "severity": "warning",
+                        "impact": "Link congestion causing queuing delays"
+                    })
+
+                if interface.errors > INTERFACE_ERROR_THRESHOLD:
+                    findings.append({
+                        "device": device_id,
+                        "interface": interface.name,
+                        "type": "high_errors",
+                        "metric": "interface_errors",
+                        "value": interface.errors,
+                        "threshold": INTERFACE_ERROR_THRESHOLD,
+                        "severity": "warning",
+                        "impact": "Packet retransmissions increasing latency"
+                    })
         
         #  summarize
         if findings:
@@ -265,3 +270,30 @@ def _generate_recommendation(findings: list[dict]) -> str:
             recommendations.append(f"Check physical layer on {finding['device']} {finding['interface']} - inspect cables and optics")
     
     return " | ".join(recommendations[:3])  # Top 3 recommendations
+
+
+@mcp.tool()
+async def diagnose_from_here(dst_device: str) -> str:
+    """
+    Diagnose latency from the local device to a destination.
+
+    Uses the local_device defined in the topology as the source.
+    This is the single-argument entry point: the engineer specifies
+    only where traffic is going, and the tool figures out the path
+    and where the bottleneck is.
+
+    Args:
+        dst_device: Destination device ID (e.g., "R10", "devnet-iosxe-1")
+
+    Returns:
+        JSON string with path, findings, root cause analysis, and summary
+    """
+    network = get_network()
+
+    if not getattr(network, "local_device", None):
+        return json.dumps({
+            "error": "No local_device configured. Add 'local_device: <device_id>' to your topology file, or use diagnose_latency with an explicit source.",
+            "available_devices": list(network.devices.keys())
+        }, indent=2)
+
+    return await diagnose_latency(src_device=network.local_device, dst_device=dst_device)
