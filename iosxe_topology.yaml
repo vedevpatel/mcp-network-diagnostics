@@ -1,45 +1,41 @@
-# IOS-XE Network Topology Configuration
+# DevNet IOS-XE reservation sandbox — 2-device topology
 #
-# Single-device config for the Cisco DevNet Always-On IOS-XE sandbox.
-# Use with:  --collector iosxe --topology-file iosxe_topology.yaml
+# Cat8kv (IOS-XE 17.12) + Nexus 9K (NX-OS)
+# IOS-XRv excluded: ssh-dss-only host key, incompatible with paramiko 4.x
 #
-# For a two-device (IOS-XR + IOS-XE) topology, use devnet_topology.yaml
-# with --collector ssh instead.
-#
-# Set these env vars before starting:
-#   export DEVNET_IOSXE_USERNAME=<your username>
-#   export DEVNET_IOSXE_PASSWORD=<your password>
+# VPN in first (AnyConnect → devnetsandbox-usw1-reservation.cisco.com:20282)
+# then start:
+#   export DEVNET_IOSXE_USERNAME=developer
+#   export DEVNET_IOSXE_PASSWORD=C1sco12345
+#   export DEVNET_NXOS_USERNAME=admin
+#   export DEVNET_NXOS_PASSWORD='RG!_Yw200'
+#   uv run mcp-network --collector ssh --topology-file iosxe_topology.yaml
+
+local_device: cat8kv
 
 devices:
-  - id: devnet-iosxe-1
+  - id: cat8kv
     type: router
-    host: sandbox-iosxe-1.cisco.com
+    device_type: iosxe
+    host: 10.10.20.48
     username: ${DEVNET_IOSXE_USERNAME}
     password: ${DEVNET_IOSXE_PASSWORD}
     port: 22
 
-  # CML IOSv routers (restore when you have CML network access)
-  # - id: iosv-1
-  #   type: router
-  #   host: 10.255.0.10
-  #   username: cisco
-  #   password: cisco
-  #   port: 22
-  #
-  # - id: iosv-2
-  #   type: router
-  #   host: 10.255.0.12
-  #   username: cisco
-  #   password: cisco
-  #   port: 22
+  - id: nexus9k
+    type: switch
+    device_type: nxos
+    host: 10.10.20.40
+    username: ${DEVNET_NXOS_USERNAME}
+    password: ${DEVNET_NXOS_PASSWORD}
+    port: 22
 
 links:
-  # Links require multiple reachable devices.
-  # Restore when using CML or your own multi-device topology:
-  #
-  # - src_device: iosv-0
-  #   src_interface: GigabitEthernet0/1
-  #   dst_device: iosv-1
-  #   dst_interface: GigabitEthernet0/1
-  #   default_latency_ms: 2.0
-  []
+  # Synthetic link — these VMs are not physically cabled.
+  # Latency is illustrative; the collector will pull real CPU/intf metrics
+  # from both devices and the path tools will use this edge.
+  - src_device: cat8kv
+    src_interface: GigabitEthernet1
+    dst_device: nexus9k
+    dst_interface: Eth1/1
+    default_latency_ms: 5.0
