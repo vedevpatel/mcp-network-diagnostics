@@ -13,6 +13,12 @@
 
 local_device: cat8kv
 
+# Anomaly-detection thresholds (all optional — defaults: cpu 80, utilization 80, errors 100)
+thresholds:
+  cpu: 80            # CPU usage % that triggers high_cpu finding
+  utilization: 80    # Interface utilization % that triggers high_utilization
+  errors: 100        # Total interface errors that triggers high_errors
+
 devices:
   - id: cat8kv
     type: router

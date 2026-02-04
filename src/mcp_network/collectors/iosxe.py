@@ -43,6 +43,7 @@ class IOSXECollector:
         # Load topology configuration
         self.topology = self._load_topology(topology_file)
         self.local_device: Optional[str] = self.topology.get("local_device")
+        self.thresholds: dict = self.topology.get("thresholds", {})
 
         # Initialize data structures
         self.devices: Dict[str, Device] = {}

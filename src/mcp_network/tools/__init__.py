@@ -9,10 +9,23 @@ from mcp_network.collectors import get_network
 from mcp_network.graph.pathfinder import find_path, get_path_details, calculate_total_latency
 
 
-# Thresholds for anomaly detection (percentage)
-CPU_THRESHOLD = 80.0
-INTERFACE_UTILIZATION_THRESHOLD = 80.0
-INTERFACE_ERROR_THRESHOLD = 100
+# Default thresholds — overridden by "thresholds:" block in topology YAML
+_DEFAULTS = {
+    "cpu": 80.0,
+    "utilization": 80.0,
+    "errors": 100,
+}
+
+
+def _get_thresholds() -> dict:
+    """Read thresholds from the active collector, fall back to defaults."""
+    network = get_network()
+    t = getattr(network, "thresholds", {})
+    return {
+        "cpu": float(t.get("cpu", _DEFAULTS["cpu"])),
+        "utilization": float(t.get("utilization", _DEFAULTS["utilization"])),
+        "errors": int(t.get("errors", _DEFAULTS["errors"])),
+    }
 
 
 @mcp.tool()
@@ -82,36 +95,37 @@ async def get_device_status(device_id: str) -> str:
             return json.dumps(error_result, indent=2)
         
         device = network.devices[device_id]
-        
+        thresholds = _get_thresholds()
+
         # Detect anomalies
         issues = []
-        if device.cpu_usage > CPU_THRESHOLD:
+        if device.cpu_usage > thresholds["cpu"]:
             issues.append({
                 "type": "high_cpu",
                 "metric": "cpu_usage",
                 "value": device.cpu_usage,
-                "threshold": CPU_THRESHOLD,
+                "threshold": thresholds["cpu"],
                 "severity": "warning"
             })
-        
+
         # Check interfaces
         interface_issues = []
         for interface in device.interfaces:
-            if interface.utilization > INTERFACE_UTILIZATION_THRESHOLD:
+            if interface.utilization > thresholds["utilization"]:
                 interface_issues.append({
                     "interface": interface.name,
                     "type": "high_utilization",
                     "value": interface.utilization,
-                    "threshold": INTERFACE_UTILIZATION_THRESHOLD,
+                    "threshold": thresholds["utilization"],
                     "severity": "warning"
                 })
-            
-            if interface.errors > INTERFACE_ERROR_THRESHOLD:
+
+            if interface.errors > thresholds["errors"]:
                 interface_issues.append({
                     "interface": interface.name,
                     "type": "high_errors",
                     "value": interface.errors,
-                    "threshold": INTERFACE_ERROR_THRESHOLD,
+                    "threshold": thresholds["errors"],
                     "severity": "warning"
                 })
         
@@ -154,11 +168,12 @@ async def list_devices() -> str:
     """
     network = get_network()
     local = getattr(network, "local_device", None)
+    thresholds = _get_thresholds()
 
     devices = []
     for device_id, device in network.devices.items():
-        has_issues = device.cpu_usage > CPU_THRESHOLD or any(
-            i.utilization > INTERFACE_UTILIZATION_THRESHOLD or i.errors > INTERFACE_ERROR_THRESHOLD
+        has_issues = device.cpu_usage > thresholds["cpu"] or any(
+            i.utilization > thresholds["utilization"] or i.errors > thresholds["errors"]
             for i in device.interfaces
         )
         devices.append({
@@ -195,30 +210,31 @@ async def diagnose_latency(src_device: str, dst_device: str) -> str:
     """
     try:
         network = get_network()
-        
+        thresholds = _get_thresholds()
+
         # Find path
         path = find_path(network.graph, src_device, dst_device)
         hops = get_path_details(network.graph, path)
         total_latency = calculate_total_latency(network.graph, path)
-        
+
         # Collect metrics & detect anomalies for each device in path
         findings = []
-        
+
         for device_id in path:
             device = network.devices[device_id]
-            
+
             # check CPU
-            if device.cpu_usage > CPU_THRESHOLD:
+            if device.cpu_usage > thresholds["cpu"]:
                 findings.append({
                     "device": device_id,
                     "type": "high_cpu",
                     "metric": "cpu_usage",
                     "value": round(device.cpu_usage, 1),
-                    "threshold": CPU_THRESHOLD,
+                    "threshold": thresholds["cpu"],
                     "severity": "warning",
                     "impact": "May cause packet processing delays"
                 })
-            
+
             # check interfaces - both egress (from) and ingress (to) on each hop
             for hop in hops:
                 if hop["from_device"] == device_id:
@@ -233,7 +249,7 @@ async def diagnose_latency(src_device: str, dst_device: str) -> str:
                     if not interface:
                         continue
 
-                    if interface.utilization > INTERFACE_UTILIZATION_THRESHOLD:
+                    if interface.utilization > thresholds["utilization"]:
                         findings.append({
                             "device": device_id,
                             "interface": interface.name,
@@ -241,12 +257,12 @@ async def diagnose_latency(src_device: str, dst_device: str) -> str:
                             "type": "high_utilization",
                             "metric": "interface_utilization",
                             "value": round(interface.utilization, 1),
-                            "threshold": INTERFACE_UTILIZATION_THRESHOLD,
+                            "threshold": thresholds["utilization"],
                             "severity": "warning",
                             "impact": "Link congestion causing queuing delays"
                         })
 
-                    if interface.errors > INTERFACE_ERROR_THRESHOLD:
+                    if interface.errors > thresholds["errors"]:
                         findings.append({
                             "device": device_id,
                             "interface": interface.name,
@@ -254,7 +270,7 @@ async def diagnose_latency(src_device: str, dst_device: str) -> str:
                             "type": "high_errors",
                             "metric": "interface_errors",
                             "value": interface.errors,
-                            "threshold": INTERFACE_ERROR_THRESHOLD,
+                            "threshold": thresholds["errors"],
                             "severity": "warning",
                             "impact": "Packet retransmissions increasing latency"
                         })

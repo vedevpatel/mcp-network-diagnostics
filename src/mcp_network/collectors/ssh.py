@@ -82,6 +82,7 @@ class SSHCollector:
         self.ssh_timeout = ssh_timeout
         self.topology = load_topology(topology_file)
         self.local_device: Optional[str] = self.topology.get("local_device")
+        self.thresholds: dict = self.topology.get("thresholds", {})
 
         self.devices: Dict[str, Device] = {}
         self.links: list[Link] = []
