@@ -142,6 +142,43 @@ async def get_device_status(device_id: str) -> str:
 
 
 @mcp.tool()
+async def list_devices() -> str:
+    """
+    List all devices in the network topology.
+
+    Returns device IDs, types, and health status at a glance.
+    Also indicates which device is the local device (used by
+    diagnose_from_here as the default source).
+
+    Use this first if you don't know what devices are available.
+    """
+    network = get_network()
+    local = getattr(network, "local_device", None)
+
+    devices = []
+    for device_id, device in network.devices.items():
+        has_issues = device.cpu_usage > CPU_THRESHOLD or any(
+            i.utilization > INTERFACE_UTILIZATION_THRESHOLD or i.errors > INTERFACE_ERROR_THRESHOLD
+            for i in device.interfaces
+        )
+        devices.append({
+            "device_id": device_id,
+            "type": device.device_type,
+            "local": device_id == local,
+            "health_status": "degraded" if has_issues else "healthy",
+            "cpu_usage": round(device.cpu_usage, 1),
+            "memory_usage": round(device.memory_usage, 1),
+        })
+
+    result = {
+        "local_device": local,
+        "devices": devices,
+        "hint": f"To diagnose latency from {local}, call diagnose_from_here with just a dst_device." if local else "No local_device set. Use diagnose_latency with both src and dst.",
+    }
+    return json.dumps(result, indent=2)
+
+
+@mcp.tool()
 async def diagnose_latency(src_device: str, dst_device: str) -> str:
     """
     Diagnose latency issues between two devices w/ root cause analysis.
@@ -183,49 +220,65 @@ async def diagnose_latency(src_device: str, dst_device: str) -> str:
                 })
             
             # check interfaces - both egress (from) and ingress (to) on each hop
-            path_interfaces = []
             for hop in hops:
                 if hop["from_device"] == device_id:
-                    path_interfaces.append(hop["from_interface"])
-                if hop["to_device"] == device_id:
-                    path_interfaces.append(hop["to_interface"])
-
-            for interface_name in path_interfaces:
-                interface = next((i for i in device.interfaces if i.name == interface_name), None)
-                if not interface:
+                    intf_names = [hop["from_interface"]]
+                elif hop["to_device"] == device_id:
+                    intf_names = [hop["to_interface"]]
+                else:
                     continue
 
-                if interface.utilization > INTERFACE_UTILIZATION_THRESHOLD:
-                    findings.append({
-                        "device": device_id,
-                        "interface": interface.name,
-                        "type": "high_utilization",
-                        "metric": "interface_utilization",
-                        "value": round(interface.utilization, 1),
-                        "threshold": INTERFACE_UTILIZATION_THRESHOLD,
-                        "severity": "warning",
-                        "impact": "Link congestion causing queuing delays"
-                    })
+                for interface_name in intf_names:
+                    interface = next((i for i in device.interfaces if i.name == interface_name), None)
+                    if not interface:
+                        continue
 
-                if interface.errors > INTERFACE_ERROR_THRESHOLD:
-                    findings.append({
-                        "device": device_id,
-                        "interface": interface.name,
-                        "type": "high_errors",
-                        "metric": "interface_errors",
-                        "value": interface.errors,
-                        "threshold": INTERFACE_ERROR_THRESHOLD,
-                        "severity": "warning",
-                        "impact": "Packet retransmissions increasing latency"
-                    })
+                    if interface.utilization > INTERFACE_UTILIZATION_THRESHOLD:
+                        findings.append({
+                            "device": device_id,
+                            "interface": interface.name,
+                            "hop": hop["hop_number"],
+                            "type": "high_utilization",
+                            "metric": "interface_utilization",
+                            "value": round(interface.utilization, 1),
+                            "threshold": INTERFACE_UTILIZATION_THRESHOLD,
+                            "severity": "warning",
+                            "impact": "Link congestion causing queuing delays"
+                        })
+
+                    if interface.errors > INTERFACE_ERROR_THRESHOLD:
+                        findings.append({
+                            "device": device_id,
+                            "interface": interface.name,
+                            "hop": hop["hop_number"],
+                            "type": "high_errors",
+                            "metric": "interface_errors",
+                            "value": interface.errors,
+                            "threshold": INTERFACE_ERROR_THRESHOLD,
+                            "severity": "warning",
+                            "impact": "Packet retransmissions increasing latency"
+                        })
         
-        #  summarize
+        #  summarize — pick the worst finding, not the first
         if findings:
-            primary_issue = findings[0]  # usually most critical (first)
-            summary = f"Latency issue detected: {primary_issue['type']} on {primary_issue['device']}"
-            if 'interface' in primary_issue:
-                summary += f" interface {primary_issue['interface']}"
-            summary += f" ({primary_issue['value']}{'' if primary_issue['type'] == 'high_errors' else '%'} exceeds threshold of {primary_issue['threshold']})"
+            type_priority = {"high_errors": 0, "high_utilization": 1, "high_cpu": 2}
+            primary_issue = min(findings, key=lambda f: (type_priority.get(f["type"], 99), -f["value"]))
+
+            hop_count = len(hops)
+            if "hop" in primary_issue:
+                hop_label = f"hop {primary_issue['hop']} of {hop_count}, "
+                hop_context = hops[primary_issue["hop"] - 1]
+                hop_label += f"{hop_context['from_device']} → {hop_context['to_device']} — "
+            else:
+                hop_label = ""
+
+            unit = "" if primary_issue["type"] == "high_errors" else "%"
+            summary = (
+                f"Bottleneck at {hop_label}{primary_issue['device']}"
+                f" {primary_issue.get('interface', 'CPU')}: "
+                f"{primary_issue['type'].replace('_', ' ')} "
+                f"({primary_issue['value']}{unit})"
+            )
         else:
             summary = "No anomalies detected. Path appears healthy."
         
