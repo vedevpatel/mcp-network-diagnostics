@@ -114,26 +114,29 @@ Update `~/Library/Application Support/Claude/claude_desktop_config.json`:
 ```
 
 ### SSH Collector (Cisco DevNet or your own routers)
-Connect to real Cisco routers via SSH. Supports IOS-XR, IOS-XE, or a
-mix of both in a single topology file.
+Connect to real Cisco devices via SSH. Supports IOS-XR, IOS-XE, and NX-OS
+in a single topology file.
 
 #### Quickstart with DevNet Always-On sandboxes
 
-DevNet provides free, always-on Cisco routers — no VPN or lab setup needed.
+DevNet provides free, always-on Cisco devices — no VPN or lab setup needed.
 Get your credentials from [developer.cisco.com](https://developer.cisco.com).
 
 ```bash
 export DEVNET_IOSXR_USERNAME=<your username>
 export DEVNET_IOSXR_PASSWORD=<your password>
+export DEVNET_NXOS_USERNAME=<your username>
+export DEVNET_NXOS_PASSWORD=<your password>
 export DEVNET_IOSXE_USERNAME=<your username>
 export DEVNET_IOSXE_PASSWORD=<your password>
 
 mcp-network --collector ssh --topology-file devnet_topology.yaml
 ```
 
-`devnet_topology.yaml` connects to both sandboxes and declares a synthetic
-link between them so that path-finding and latency diagnosis work across
-the two devices.
+`devnet_topology.yaml` connects to three sandboxes (IOS-XR, Nexus 9000,
+IOS-XE) with synthetic links forming a 3-hop path. Real metrics come via
+SSH; the topology gives path-finding and latency diagnosis something to
+work with.
 
 #### Claude Desktop integration
 
@@ -157,6 +160,8 @@ Update `~/Library/Application Support/Claude/claude_desktop_config.json`:
       "env": {
         "DEVNET_IOSXR_USERNAME": "your_username",
         "DEVNET_IOSXR_PASSWORD": "your_password",
+        "DEVNET_NXOS_USERNAME": "your_username",
+        "DEVNET_NXOS_PASSWORD": "your_password",
         "DEVNET_IOSXE_USERNAME": "your_username",
         "DEVNET_IOSXE_PASSWORD": "your_password"
       }
@@ -166,8 +171,9 @@ Update `~/Library/Application Support/Claude/claude_desktop_config.json`:
 ```
 
 Then ask Claude things like:
-- "What's the status of devnet-iosxr-1?"
+- "What's the status of devnet-nexus-1?"
 - "Diagnose latency from devnet-iosxr-1 to devnet-iosxe-1"
+- "Which device has the highest memory usage?"
 
 #### Using your own routers
 
@@ -192,7 +198,7 @@ All topology files are YAML with the same structure:
 devices:
   - id: my-router          # unique ID used in tool calls
     type: router            # router or switch
-    device_type: iosxr      # iosxr or iosxe (ssh collector only)
+    device_type: iosxr      # iosxr, iosxe, or nxos (ssh collector only)
     host: 192.168.1.1
     username: ${MY_USER}    # literal value or ${ENV_VAR} placeholder
     password: ${MY_PASS}
