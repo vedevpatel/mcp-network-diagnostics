@@ -14,6 +14,7 @@ class SimulatedCollector:
         self.graph: nx.Graph = nx.Graph()
         self.local_device: str = "R1"
         self.thresholds: dict = {}
+        self._call_count: int = 0
         self._generate_topology()
         self._build_graph()
     
@@ -83,7 +84,7 @@ class SimulatedCollector:
         # Add all devices as nodes
         for device_id in self.devices:
             self.graph.add_node(device_id)
-        
+
         # Add links as edges (undirected graph)
         for link in self.links:
             self.graph.add_edge(
@@ -92,6 +93,99 @@ class SimulatedCollector:
                 latency=link.latency_ms,
                 src_interface=link.src_interface,
                 dst_interface=link.dst_interface
+            )
+
+    def refresh(self) -> None:
+        """Apply small random metric changes to simulate time-varying data.
+
+        Uses a separate RNG seeded by call count so results are deterministic
+        in tests.  Congested devices trend upward:
+          CPU:   R3, R6, R9  (i % 3 == 0)
+          Iface: R4, R8      (i % 4 == 0)
+        """
+        self._call_count += 1
+        rng = random.Random(self._call_count)
+
+        for i, (device_id, device) in enumerate(self.devices.items(), start=1):
+            cpu_congested = i % 3 == 0
+            iface_congested = i % 4 == 0
+
+            if cpu_congested:
+                cpu_delta = rng.uniform(0.5, 2.0)
+            else:
+                cpu_delta = rng.uniform(-1.5, 1.5)
+            new_cpu = max(0.0, min(100.0, device.cpu_usage + cpu_delta))
+
+            mem_delta = rng.uniform(-0.5, 0.5)
+            new_mem = max(0.0, min(100.0, device.memory_usage + mem_delta))
+
+            new_interfaces = []
+            for iface in device.interfaces:
+                if iface_congested:
+                    util_delta = rng.uniform(0.2, 1.5)
+                else:
+                    util_delta = rng.uniform(-1.0, 1.0)
+                new_util = max(0.0, min(100.0, iface.utilization + util_delta))
+                new_interfaces.append(Interface(
+                    name=iface.name,
+                    utilization=new_util,
+                    errors=iface.errors,
+                    status=iface.status,
+                ))
+
+            self.devices[device_id] = Device(
+                device_id=device_id,
+                device_type=device.device_type,
+                cpu_usage=new_cpu,
+                memory_usage=new_mem,
+                interfaces=new_interfaces,
+            )
+
+        # --- Anomaly injection for anomaly detection testing ---
+        # R2 CPU spike at calls 8-10
+        if 8 <= self._call_count <= 10:
+            r2 = self.devices["R2"]
+            spike_cpu = min(100.0, r2.cpu_usage + rng.uniform(15.0, 20.0))
+            self.devices["R2"] = Device(
+                device_id="R2",
+                device_type=r2.device_type,
+                cpu_usage=spike_cpu,
+                memory_usage=r2.memory_usage,
+                interfaces=list(r2.interfaces),
+            )
+
+        # R5 Gi0/0 error spike at calls 12-13
+        if 12 <= self._call_count <= 13:
+            r5 = self.devices["R5"]
+            new_ifaces = []
+            for iface in r5.interfaces:
+                if iface.name == "Gi0/0":
+                    new_ifaces.append(Interface(
+                        name=iface.name,
+                        utilization=iface.utilization,
+                        errors=rng.randint(50, 80),
+                        status=iface.status,
+                    ))
+                else:
+                    new_ifaces.append(iface)
+            self.devices["R5"] = Device(
+                device_id="R5",
+                device_type=r5.device_type,
+                cpu_usage=r5.cpu_usage,
+                memory_usage=r5.memory_usage,
+                interfaces=new_ifaces,
+            )
+
+        # R7 CPU volatility from call 15 onward
+        if self._call_count >= 15:
+            r7 = self.devices["R7"]
+            volatile_cpu = max(0.0, min(100.0, r7.cpu_usage + rng.uniform(-8.0, 8.0)))
+            self.devices["R7"] = Device(
+                device_id="R7",
+                device_type=r7.device_type,
+                cpu_usage=volatile_cpu,
+                memory_usage=r7.memory_usage,
+                interfaces=list(r7.interfaces),
             )
 
 

@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv run python:*)",
+      "Bash(DEVNET_NXOS_USERNAME=vedevpatel DEVNET_NXOS_PASSWORD='-XF_9F5Ogco3' uv run python:*)"
+    ]
+  }
+}
