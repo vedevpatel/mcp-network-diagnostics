@@ -1280,8 +1280,8 @@ async def why_is_it_slow(destination: str) -> str:
             "destination": destination,
         }, indent=2)
 
-    # Analyze results to identify bottleneck
-    diagnosis = _analyze_edge_probe(probe)
+    # Analyze results to identify bottleneck (with external context)
+    diagnosis = await _analyze_edge_probe(probe)
 
     return json.dumps(diagnosis, indent=2)
 
@@ -1456,11 +1456,17 @@ async def trace_path(destination: str) -> str:
     }, indent=2)
 
 
-def _analyze_edge_probe(probe) -> dict:
-    """Analyze edge probe results and generate diagnosis."""
+async def _analyze_edge_probe(probe) -> dict:
+    """Analyze edge probe results and generate diagnosis with external context."""
+    from mcp_network.context import BGPContext, OutageContext
+
+    bgp_ctx = BGPContext()
+    outage_ctx = OutageContext()
+
     issues = []
     bottleneck = "unknown"
     confidence = 0.0
+    context_notes = []
 
     # Check WiFi
     if probe.wifi and probe.wifi.quality in ("poor", "fair"):
@@ -1480,7 +1486,7 @@ def _analyze_edge_probe(probe) -> dict:
     if probe.dns and probe.dns.resolution_ms > 100:
         issues.append(f"DNS resolution slow ({probe.dns.resolution_ms:.0f}ms)")
 
-    # Analyze traceroute for ISP or internet issues
+    # Analyze traceroute for ISP or internet issues with AS lookup
     if probe.traceroute and len(probe.traceroute) > 2:
         # Find biggest latency jump
         max_jump = 0.0
@@ -1492,14 +1498,32 @@ def _analyze_edge_probe(probe) -> dict:
                 max_jump = jump
                 problem_hop = probe.traceroute[i]
 
-        if problem_hop:
+        if problem_hop and problem_hop.ip:
+            # Enrich with BGP/AS context
+            as_info = await bgp_ctx.get_as_info(problem_hop.ip)
+
+            # Check if this AS has known outages
+            if as_info.asn:
+                outage_status = await outage_ctx.correlate_with_as(as_info.asn)
+                if outage_status:
+                    context_notes.append(outage_status)
+
+            # Format issue with network owner info
+            hop_description = bgp_ctx.format_as_info(as_info)
+
             if problem_hop.number <= 5:
-                issues.append(f"ISP network slow at hop {problem_hop.number} ({problem_hop.ip or 'unknown'})")
+                issues.append(f"ISP network slow at hop {problem_hop.number}: {hop_description}")
                 if bottleneck == "unknown":
                     bottleneck = "isp_internal"
                     confidence = 0.75
             else:
-                issues.append(f"Internet path slow at hop {problem_hop.number}")
+                provider_name = outage_ctx.is_known_provider_as(as_info.asn)
+                if provider_name:
+                    issues.append(f"{provider_name} network slow at hop {problem_hop.number}")
+                    context_notes.append(f"Traffic routing through {provider_name} (AS{as_info.asn})")
+                else:
+                    issues.append(f"Internet path slow at hop {problem_hop.number}: {hop_description}")
+
                 if bottleneck == "unknown":
                     bottleneck = "internet_path"
                     confidence = 0.70
@@ -1527,7 +1551,7 @@ def _analyze_edge_probe(probe) -> dict:
     # Generate suggestions
     suggestions = _generate_suggestions(bottleneck, probe)
 
-    return {
+    result = {
         "destination": probe.target,
         "diagnosis": {
             "bottleneck": bottleneck,
@@ -1553,6 +1577,12 @@ def _analyze_edge_probe(probe) -> dict:
         },
         "timestamp": datetime.fromtimestamp(probe.timestamp, timezone.utc).isoformat(),
     }
+
+    # Add context notes if any
+    if context_notes:
+        result["context"] = context_notes
+
+    return result
 
 
 def _generate_suggestions(bottleneck: str, probe) -> list[str]:
