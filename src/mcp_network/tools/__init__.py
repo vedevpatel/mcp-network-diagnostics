@@ -3,6 +3,7 @@ Network diagnostic MCP tools
 """
 
 import json
+import time
 from datetime import datetime, timezone
 from mcp_network.app import mcp
 from mcp_network.collectors import get_network
@@ -1596,3 +1597,188 @@ def _generate_suggestions(bottleneck: str, probe) -> list[str]:
         suggestions.append("Connection appears healthy overall")
 
     return suggestions
+
+
+# ============================================================================
+# Consumer Mode: Baseline & History (Phase 2)
+# ============================================================================
+
+# Module-level baseline storage
+_baseline_storage = None
+
+
+def _get_baseline_storage():
+    """Get or create baseline storage singleton."""
+    global _baseline_storage
+    if _baseline_storage is None:
+        from mcp_network.baseline import BaselineStorage
+        _baseline_storage = BaselineStorage()
+    return _baseline_storage
+
+
+@mcp.tool()
+async def record_baseline() -> str:
+    """
+    Record current network state as baseline measurement.
+
+    Run this when your connection is working well to establish a baseline.
+    The system will automatically track historical "good" performance over time.
+
+    Recommended: Run this tool 5-10 times over a few days during normal usage
+    to build a reliable baseline.
+
+    Returns:
+        JSON confirmation with recorded metrics
+    """
+    from mcp_network.collectors.edge import EdgeCollector
+    from mcp_network.baseline import BaselineSnapshot
+
+    collector = EdgeCollector()
+    storage = _get_baseline_storage()
+
+    # Collect current state
+    gateway = await collector._probe_gateway()
+    dns = await collector._probe_dns("google.com")
+    external_latency, external_loss = await collector._ping("8.8.8.8", count=5)
+    wifi = await collector._get_wifi_stats()
+
+    # Create snapshot
+    snapshot = BaselineSnapshot(
+        timestamp=time.time(),
+        gateway_latency_ms=gateway.latency_ms,
+        gateway_loss_pct=gateway.loss_pct,
+        dns_resolution_ms=dns.resolution_ms if dns.resolution_ms > 0 else 0.0,
+        external_latency_ms=external_latency,
+        external_loss_pct=external_loss,
+        wifi_signal_dbm=wifi.signal_strength_dbm if wifi else None,
+        wifi_quality=wifi.quality if wifi else None,
+    )
+
+    storage.add_snapshot(snapshot)
+
+    return json.dumps({
+        "status": "baseline_recorded",
+        "metrics": {
+            "gateway_latency_ms": round(snapshot.gateway_latency_ms, 1),
+            "gateway_loss_pct": round(snapshot.gateway_loss_pct, 1),
+            "dns_resolution_ms": round(snapshot.dns_resolution_ms, 1),
+            "external_latency_ms": round(snapshot.external_latency_ms, 1),
+            "external_loss_pct": round(snapshot.external_loss_pct, 1),
+            "wifi_signal_dbm": snapshot.wifi_signal_dbm,
+        },
+        "total_baseline_samples": len(storage.snapshots),
+        "timestamp": datetime.fromtimestamp(snapshot.timestamp, timezone.utc).isoformat(),
+    }, indent=2)
+
+
+@mcp.tool()
+async def compare_to_baseline() -> str:
+    """
+    Compare current network performance to historical baseline.
+
+    Shows how current metrics deviate from normal:
+    - "Gateway latency: 45ms (normally 8ms, 5.6x worse)"
+    - "WiFi signal: -72 dBm (normally -52 dBm, 38% worse)"
+
+    Requires at least 5 baseline samples. Run record_baseline() first.
+
+    Returns:
+        JSON with per-metric comparison and anomaly flags
+    """
+    from mcp_network.collectors.edge import EdgeCollector
+    from mcp_network.baseline import BaselineSnapshot
+
+    collector = EdgeCollector()
+    storage = _get_baseline_storage()
+
+    # Check if we have enough baseline data
+    if len(storage.snapshots) < 5:
+        return json.dumps({
+            "error": "Insufficient baseline data",
+            "current_samples": len(storage.snapshots),
+            "required_samples": 5,
+            "hint": "Run record_baseline() at least 5 times to establish a baseline",
+        }, indent=2)
+
+    # Collect current state
+    gateway = await collector._probe_gateway()
+    dns = await collector._probe_dns("google.com")
+    external_latency, external_loss = await collector._ping("8.8.8.8", count=5)
+    wifi = await collector._get_wifi_stats()
+
+    # Create current snapshot
+    current = BaselineSnapshot(
+        timestamp=time.time(),
+        gateway_latency_ms=gateway.latency_ms,
+        gateway_loss_pct=gateway.loss_pct,
+        dns_resolution_ms=dns.resolution_ms if dns.resolution_ms > 0 else 0.0,
+        external_latency_ms=external_latency,
+        external_loss_pct=external_loss,
+        wifi_signal_dbm=wifi.signal_strength_dbm if wifi else None,
+        wifi_quality=wifi.quality if wifi else None,
+    )
+
+    # Compare to baseline
+    comparisons = storage.compare_to_baseline(current)
+
+    # Format results
+    comparison_list = []
+    anomalies = []
+
+    for comp in comparisons:
+        comparison_list.append({
+            "metric": comp.metric,
+            "current": round(comp.current_value, 2),
+            "baseline_mean": round(comp.baseline_mean, 2),
+            "baseline_stddev": round(comp.baseline_stddev, 2),
+            "deviation_factor": round(comp.deviation_factor, 2),
+            "severity": comp.severity,
+            "explanation": comp.explanation,
+        })
+
+        if comp.is_anomalous:
+            anomalies.append({
+                "metric": comp.metric,
+                "severity": comp.severity,
+                "explanation": comp.explanation,
+            })
+
+    # Overall assessment
+    if not anomalies:
+        overall = "normal"
+        summary = "All metrics within normal range"
+    elif any(a["severity"] == "critical" for a in anomalies):
+        overall = "critical"
+        summary = f"{len(anomalies)} critical anomalies detected"
+    else:
+        overall = "warning"
+        summary = f"{len(anomalies)} anomalies detected"
+
+    return json.dumps({
+        "overall_status": overall,
+        "summary": summary,
+        "anomalies": anomalies,
+        "comparisons": comparison_list,
+        "baseline_samples": len(storage.snapshots),
+        "timestamp": datetime.fromtimestamp(current.timestamp, timezone.utc).isoformat(),
+    }, indent=2)
+
+
+@mcp.tool()
+async def clear_baseline() -> str:
+    """
+    Clear all baseline data and start fresh.
+
+    Use this if network conditions have permanently changed (e.g., ISP upgrade)
+    and you want to establish a new baseline.
+
+    Returns:
+        JSON confirmation
+    """
+    storage = _get_baseline_storage()
+    storage.clear_baseline()
+
+    return json.dumps({
+        "status": "baseline_cleared",
+        "message": "All baseline data has been cleared. Run record_baseline() to start fresh.",
+    }, indent=2)
