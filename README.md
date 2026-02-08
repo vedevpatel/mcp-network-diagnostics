@@ -6,24 +6,24 @@ AI-powered network diagnostics with two modes: **Operator Mode** (SSH to devices
 
 ### Operator Mode (SSH/Prometheus)
 Diagnose enterprise networks by connecting to routers and switches:
-- 🔍 Device status and metrics (CPU, memory, interface stats)
-- 🗺️ Path finding between devices
-- 📈 Trend analysis with breach prediction
-- 🚨 Anomaly detection (z-score, rate shifts, volatility)
-- 🧠 Root cause analysis with confidence scoring
-- 📝 Config change correlation
-- 🌐 Multi-vendor support (Cisco IOS-XR, IOS-XE, NX-OS)
+- Device status and metrics (CPU, memory, interface stats)
+- Path finding between devices
+- Trend analysis with breach prediction
+- Anomaly detection (z-score, rate shifts, volatility)
+- Root cause analysis with confidence scoring
+- Config change correlation
+- Multi-vendor support (Cisco IOS-XR, IOS-XE, NX-OS)
 
 ### Consumer Mode (Edge Diagnostics)
 Diagnose your home/office network without device access:
-- 🏠 Gateway health checks
-- 🌐 DNS resolution timing
-- 🛣️ Traceroute with hop analysis
-- 📶 WiFi signal quality (macOS/Linux/Windows)
-- 📊 Baseline tracking with anomaly detection
-- 🔍 Provider context (BGP/AS lookup, outage correlation)
-- 🤖 Continuous monitoring agent with intent system
-- ⚡ Speedtest integration
+- Gateway health checks
+- DNS resolution timing
+- Traceroute with hop analysis
+- WiFi signal quality (macOS/Linux/Windows)
+- Baseline tracking with anomaly detection
+- Provider context (BGP/AS lookup, outage correlation)
+- Continuous monitoring agent with intent system
+- Speedtest integration
 
 ## Quick Start
 
@@ -338,7 +338,3 @@ Built with:
 - [MCP SDK](https://github.com/anthropics/python-sdk) - Model Context Protocol
 - [Netmiko](https://github.com/ktbyers/netmiko) - Multi-vendor SSH
 - [TextFSM](https://github.com/google/textfsm) - Cisco output parsing
-
-## License
-
-MIT
