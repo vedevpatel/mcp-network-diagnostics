@@ -1243,3 +1243,356 @@ async def explain_incident(context: str = "all") -> str:
         "explanation": explanation,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }, indent=2)
+
+
+# ============================================================================
+# Consumer Mode: Edge Diagnostics (No Credentials Required)
+# ============================================================================
+
+@mcp.tool()
+async def why_is_it_slow(destination: str) -> str:
+    """
+    Diagnose why a destination (website, server, etc.) is slow.
+
+    No device credentials needed — runs diagnostic probes from your computer.
+    Tests your local network, ISP connection, and path to the destination.
+
+    Use this when you're experiencing slowness and want to know where the
+    problem is: your WiFi, your router, your ISP, or the destination itself.
+
+    Args:
+        destination: URL, hostname, or IP (e.g., "zoom.us", "8.8.8.8", "https://google.com")
+
+    Returns:
+        JSON with diagnosis, bottleneck identification, and suggestions
+    """
+    from mcp_network.collectors.edge import EdgeCollector
+
+    collector = EdgeCollector()
+
+    try:
+        probe = await collector.probe_destination(destination)
+    except Exception as e:
+        return json.dumps({
+            "error": f"Probe failed: {e}",
+            "destination": destination,
+        }, indent=2)
+
+    # Analyze results to identify bottleneck
+    diagnosis = _analyze_edge_probe(probe)
+
+    return json.dumps(diagnosis, indent=2)
+
+
+@mcp.tool()
+async def check_my_connection() -> str:
+    """
+    Quick health check of your internet connection.
+
+    Tests multiple layers:
+    - WiFi signal (if applicable)
+    - Local gateway (your router)
+    - DNS resolution
+    - External connectivity
+
+    Returns status for each layer with any issues identified.
+
+    Returns:
+        JSON with health status for each network layer
+    """
+    from mcp_network.collectors.edge import EdgeCollector
+
+    collector = EdgeCollector()
+
+    # Test gateway
+    gateway = await collector._probe_gateway()
+
+    # Test DNS
+    dns_google = await collector._probe_dns("google.com")
+    dns_cloudflare = await collector._probe_dns("one.one.one.one")
+
+    # Test external ping
+    external_latency, external_loss = await collector._ping("8.8.8.8", count=5)
+
+    # Get WiFi stats
+    wifi = await collector._get_wifi_stats()
+
+    # Determine overall health
+    issues = []
+    if wifi and wifi.quality in ("poor", "fair"):
+        issues.append(f"WiFi signal is {wifi.quality} ({wifi.signal_strength_dbm} dBm)")
+
+    if gateway.status != "healthy":
+        issues.append(f"Local network {gateway.status} (gateway: {gateway.latency_ms:.1f}ms, {gateway.loss_pct}% loss)")
+
+    if dns_google.resolution_ms < 0 or dns_cloudflare.resolution_ms < 0:
+        issues.append("DNS resolution failing")
+    elif max(dns_google.resolution_ms, dns_cloudflare.resolution_ms) > 100:
+        issues.append(f"DNS slow ({max(dns_google.resolution_ms, dns_cloudflare.resolution_ms):.0f}ms)")
+
+    if external_loss > 5.0:
+        issues.append(f"Internet connection unstable ({external_loss}% packet loss)")
+    elif external_latency > 50.0:
+        issues.append(f"Internet latency high ({external_latency:.0f}ms)")
+
+    overall_status = "healthy" if not issues else "degraded"
+
+    return json.dumps({
+        "overall_status": overall_status,
+        "issues": issues,
+        "layers": {
+            "wifi": {
+                "available": wifi is not None,
+                "ssid": wifi.ssid if wifi else None,
+                "signal_strength_dbm": wifi.signal_strength_dbm if wifi else None,
+                "quality": wifi.quality if wifi else None,
+            },
+            "local_network": {
+                "gateway_ip": gateway.ip,
+                "latency_ms": round(gateway.latency_ms, 1),
+                "loss_pct": round(gateway.loss_pct, 1),
+                "status": gateway.status,
+            },
+            "dns": {
+                "google_ms": round(dns_google.resolution_ms, 1) if dns_google.resolution_ms > 0 else "failed",
+                "cloudflare_ms": round(dns_cloudflare.resolution_ms, 1) if dns_cloudflare.resolution_ms > 0 else "failed",
+            },
+            "internet": {
+                "latency_to_8888_ms": round(external_latency, 1),
+                "packet_loss_pct": round(external_loss, 1),
+            },
+        },
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }, indent=2)
+
+
+@mcp.tool()
+async def trace_path(destination: str) -> str:
+    """
+    Show the network path to a destination with latency per hop.
+
+    Identifies which segment of the path has issues:
+    - Hops 1-2: Your local network/router
+    - Hops 3-5: Your ISP's network
+    - Later hops: Transit networks and destination
+
+    Args:
+        destination: Hostname or IP to trace
+
+    Returns:
+        JSON with hop-by-hop breakdown and bottleneck identification
+    """
+    from mcp_network.collectors.edge import EdgeCollector
+
+    collector = EdgeCollector()
+
+    try:
+        hops = await collector._run_traceroute(destination)
+    except Exception as e:
+        return json.dumps({
+            "error": f"Traceroute failed: {e}",
+            "destination": destination,
+        }, indent=2)
+
+    if not hops:
+        return json.dumps({
+            "error": "No traceroute data collected",
+            "destination": destination,
+            "hint": "Ensure traceroute/mtr is installed and accessible",
+        }, indent=2)
+
+    # Identify bottleneck (highest latency jump)
+    bottleneck_hop = None
+    max_jump = 0.0
+
+    for i in range(1, len(hops)):
+        jump = hops[i].latency_ms - hops[i-1].latency_ms
+        if jump > max_jump:
+            max_jump = jump
+            bottleneck_hop = hops[i]
+
+    # Format hop list
+    hop_list = []
+    for hop in hops:
+        hop_list.append({
+            "number": hop.number,
+            "ip": hop.ip,
+            "hostname": hop.hostname,
+            "latency_ms": round(hop.latency_ms, 1),
+            "loss_pct": round(hop.loss_pct, 1) if hop.loss_pct else 0.0,
+            "is_bottleneck": hop == bottleneck_hop,
+        })
+
+    # Classify segment
+    if bottleneck_hop:
+        if bottleneck_hop.number <= 2:
+            segment = "local_network"
+            explanation = "The bottleneck is in your local network (WiFi or router)"
+        elif bottleneck_hop.number <= 5:
+            segment = "isp"
+            explanation = "The bottleneck is inside your ISP's network"
+        else:
+            segment = "internet"
+            explanation = "The bottleneck is in the internet path or at the destination"
+    else:
+        segment = "unknown"
+        explanation = "Path looks healthy overall"
+
+    return json.dumps({
+        "destination": destination,
+        "hops": hop_list,
+        "bottleneck": {
+            "hop_number": bottleneck_hop.number if bottleneck_hop else None,
+            "ip": bottleneck_hop.ip if bottleneck_hop else None,
+            "latency_ms": round(bottleneck_hop.latency_ms, 1) if bottleneck_hop else None,
+            "latency_jump_ms": round(max_jump, 1) if bottleneck_hop else None,
+            "segment": segment,
+            "explanation": explanation,
+        },
+        "total_latency_ms": round(hops[-1].latency_ms, 1) if hops else 0.0,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }, indent=2)
+
+
+def _analyze_edge_probe(probe) -> dict:
+    """Analyze edge probe results and generate diagnosis."""
+    issues = []
+    bottleneck = "unknown"
+    confidence = 0.0
+
+    # Check WiFi
+    if probe.wifi and probe.wifi.quality in ("poor", "fair"):
+        issues.append(f"WiFi signal is {probe.wifi.quality} ({probe.wifi.signal_strength_dbm} dBm)")
+        if probe.wifi.quality == "poor":
+            bottleneck = "wifi"
+            confidence = 0.85
+
+    # Check gateway
+    if probe.gateway.status != "healthy":
+        issues.append(f"Local network {probe.gateway.status} ({probe.gateway.latency_ms:.0f}ms to gateway)")
+        if bottleneck == "unknown":
+            bottleneck = "local_network"
+            confidence = 0.80
+
+    # Check DNS
+    if probe.dns and probe.dns.resolution_ms > 100:
+        issues.append(f"DNS resolution slow ({probe.dns.resolution_ms:.0f}ms)")
+
+    # Analyze traceroute for ISP or internet issues
+    if probe.traceroute and len(probe.traceroute) > 2:
+        # Find biggest latency jump
+        max_jump = 0.0
+        problem_hop = None
+
+        for i in range(1, len(probe.traceroute)):
+            jump = probe.traceroute[i].latency_ms - probe.traceroute[i-1].latency_ms
+            if jump > max_jump and jump > 20:  # Significant jump threshold
+                max_jump = jump
+                problem_hop = probe.traceroute[i]
+
+        if problem_hop:
+            if problem_hop.number <= 5:
+                issues.append(f"ISP network slow at hop {problem_hop.number} ({problem_hop.ip or 'unknown'})")
+                if bottleneck == "unknown":
+                    bottleneck = "isp_internal"
+                    confidence = 0.75
+            else:
+                issues.append(f"Internet path slow at hop {problem_hop.number}")
+                if bottleneck == "unknown":
+                    bottleneck = "internet_path"
+                    confidence = 0.70
+
+    # Check HTTP timing if available
+    if probe.http:
+        if probe.http.dns_ms > 100:
+            issues.append(f"DNS lookup slow ({probe.http.dns_ms:.0f}ms)")
+        if probe.http.tls_ms > 200:
+            issues.append(f"TLS handshake slow ({probe.http.tls_ms:.0f}ms)")
+        if probe.http.ttfb_ms > 500:
+            issues.append(f"Server response slow ({probe.http.ttfb_ms:.0f}ms)")
+            if bottleneck == "unknown":
+                bottleneck = "destination"
+                confidence = 0.80
+
+    # Generate summary
+    if not issues:
+        summary = f"Connection to {probe.target} appears healthy"
+        bottleneck = "none"
+        confidence = 0.90
+    else:
+        summary = f"Found {len(issues)} issue(s) affecting {probe.target}"
+
+    # Generate suggestions
+    suggestions = _generate_suggestions(bottleneck, probe)
+
+    return {
+        "destination": probe.target,
+        "diagnosis": {
+            "bottleneck": bottleneck,
+            "confidence": round(confidence, 2),
+            "summary": summary,
+        },
+        "issues": issues,
+        "suggestions": suggestions,
+        "path_analysis": {
+            "wifi": {
+                "status": probe.wifi.quality if probe.wifi else "not_wifi",
+                "signal_dbm": probe.wifi.signal_strength_dbm if probe.wifi else None,
+            },
+            "local_network": {
+                "status": probe.gateway.status,
+                "latency_ms": round(probe.gateway.latency_ms, 1),
+            },
+            "dns": {
+                "resolution_ms": round(probe.dns.resolution_ms, 1) if probe.dns else None,
+            },
+            "path_hops": len(probe.traceroute),
+            "total_latency_ms": round(probe.traceroute[-1].latency_ms, 1) if probe.traceroute else None,
+        },
+        "timestamp": datetime.fromtimestamp(probe.timestamp, timezone.utc).isoformat(),
+    }
+
+
+def _generate_suggestions(bottleneck: str, probe) -> list[str]:
+    """Generate actionable suggestions based on bottleneck."""
+    suggestions = []
+
+    if bottleneck == "wifi":
+        suggestions.extend([
+            "Move closer to your WiFi router",
+            "Switch to 5GHz network if available",
+            "Use wired Ethernet connection if possible",
+            "Check for interference from other devices",
+        ])
+    elif bottleneck == "local_network":
+        suggestions.extend([
+            "Restart your router",
+            "Check if other devices are using bandwidth",
+            "Try wired connection instead of WiFi",
+            f"Contact network admin (gateway: {probe.gateway.ip})",
+        ])
+    elif bottleneck == "isp_internal":
+        suggestions.extend([
+            "This issue is inside your ISP's network — outside your control",
+            "Check downdetector.com for reported ISP outages",
+            "Try mobile hotspot as temporary workaround",
+            "Report persistent issues to your ISP",
+        ])
+    elif bottleneck == "internet_path":
+        suggestions.extend([
+            "The slowdown is in the internet path to destination",
+            "Try again later — may be temporary congestion",
+            "Try using a VPN to different geographic region",
+            "Check if destination has status page for outages",
+        ])
+    elif bottleneck == "destination":
+        suggestions.extend([
+            "The destination server appears slow",
+            "Check destination's status page for known issues",
+            "Try different server/region if available",
+            "Your network path is healthy — issue is with the service",
+        ])
+    else:
+        suggestions.append("Connection appears healthy overall")
+
+    return suggestions
