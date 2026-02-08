@@ -1905,3 +1905,276 @@ async def run_speedtest() -> str:
         return json.dumps({
             "error": f"speedtest failed: {e}",
         }, indent=2)
+
+
+# ============================================================================
+# Agent Control Tools
+# ============================================================================
+
+# Module-level agent instance (singleton)
+_agent_instance = None
+
+
+@mcp.tool()
+async def start_agent(poll_interval_seconds: int = 60) -> str:
+    """
+    Start the continuous network monitoring agent.
+
+    The agent will:
+    - Monitor network conditions every poll_interval_seconds
+    - Check registered intents against current state
+    - Diagnose violations and take action (alert, record)
+    - Update baselines automatically
+
+    Args:
+        poll_interval_seconds: Time between monitoring checks (default 60)
+
+    Returns:
+        JSON with agent status
+    """
+    from mcp_network.agent import NetworkAgent, AgentConfig
+
+    global _agent_instance
+
+    if _agent_instance and _agent_instance.running:
+        return json.dumps({
+            "status": "already_running",
+            "intents_count": len(_agent_instance.get_intents()),
+            "poll_interval": _agent_instance.config.poll_interval,
+        }, indent=2)
+
+    config = AgentConfig(poll_interval=float(poll_interval_seconds))
+    _agent_instance = NetworkAgent(config)
+    await _agent_instance.start()
+
+    return json.dumps({
+        "status": "started",
+        "poll_interval": poll_interval_seconds,
+        "intents_count": 0,
+        "message": "Agent is now monitoring. Add intents with set_intent().",
+    }, indent=2)
+
+
+@mcp.tool()
+async def stop_agent() -> str:
+    """
+    Stop the continuous network monitoring agent.
+
+    Returns:
+        JSON with final status
+    """
+    global _agent_instance
+
+    if not _agent_instance or not _agent_instance.running:
+        return json.dumps({
+            "status": "not_running",
+            "message": "Agent is not currently running",
+        }, indent=2)
+
+    intents_count = len(_agent_instance.get_intents())
+    incidents_count = len(_agent_instance.get_incidents())
+
+    await _agent_instance.stop()
+
+    return json.dumps({
+        "status": "stopped",
+        "intents_monitored": intents_count,
+        "incidents_detected": incidents_count,
+    }, indent=2)
+
+
+@mcp.tool()
+async def set_intent(goal: str, priority: int = 5) -> str:
+    """
+    Add a network monitoring goal in natural language.
+
+    The agent will parse your goal and monitor for violations.
+
+    Examples:
+    - "Zoom calls should never lag"
+      → Monitors zoom.us latency < 100ms
+    - "Alert me if gaming latency exceeds 50ms"
+      → Alerts when gaming latency > 50ms
+    - "My connection should stay close to baseline"
+      → Monitors for baseline deviation > 2x
+
+    Args:
+        goal: Your network goal in plain English
+        priority: 1-10, higher = more important (default 5)
+
+    Returns:
+        JSON with parsed intent details
+    """
+    from mcp_network.agent import IntentParser
+
+    global _agent_instance
+
+    # Parse the intent
+    parser = IntentParser()
+    intent = await parser.parse(goal)
+    intent.priority = priority
+
+    # Start agent if not running
+    if not _agent_instance or not _agent_instance.running:
+        from mcp_network.agent import NetworkAgent, AgentConfig
+        _agent_instance = NetworkAgent(AgentConfig())
+        await _agent_instance.start()
+
+    # Add to agent
+    _agent_instance.add_intent(intent)
+
+    return json.dumps({
+        "status": "intent_added",
+        "intent": {
+            "id": intent.id,
+            "name": intent.name,
+            "target": intent.target,
+            "metric": intent.metric,
+            "threshold": intent.threshold,
+            "comparison": intent.comparison,
+            "priority": intent.priority,
+            "actions": intent.actions,
+        },
+        "message": f"Now monitoring: {intent.name}",
+    }, indent=2)
+
+
+@mcp.tool()
+async def list_intents() -> str:
+    """
+    List all registered monitoring intents.
+
+    Returns:
+        JSON with all active intents
+    """
+    global _agent_instance
+
+    if not _agent_instance:
+        return json.dumps({
+            "intents": [],
+            "message": "Agent not initialized. Use set_intent() to start.",
+        }, indent=2)
+
+    intents = _agent_instance.get_intents()
+
+    return json.dumps({
+        "intents": [
+            {
+                "id": i.id,
+                "name": i.name,
+                "target": i.target,
+                "metric": i.metric,
+                "threshold": i.threshold,
+                "comparison": i.comparison,
+                "priority": i.priority,
+                "actions": i.actions,
+                "enabled": i.enabled,
+            }
+            for i in intents
+        ],
+        "count": len(intents),
+        "agent_running": _agent_instance.running,
+    }, indent=2)
+
+
+@mcp.tool()
+async def remove_intent(intent_id: str) -> str:
+    """
+    Remove a monitoring intent by ID.
+
+    Args:
+        intent_id: The intent ID to remove (from list_intents)
+
+    Returns:
+        JSON with removal status
+    """
+    global _agent_instance
+
+    if not _agent_instance:
+        return json.dumps({
+            "status": "error",
+            "message": "Agent not initialized",
+        }, indent=2)
+
+    _agent_instance.remove_intent(intent_id)
+
+    return json.dumps({
+        "status": "removed",
+        "intent_id": intent_id,
+        "remaining_intents": len(_agent_instance.get_intents()),
+    }, indent=2)
+
+
+@mcp.tool()
+async def get_incidents(limit: int = 10) -> str:
+    """
+    Get recent network incidents detected by the agent.
+
+    Args:
+        limit: Maximum number of incidents to return (default 10)
+
+    Returns:
+        JSON with recent incidents
+    """
+    global _agent_instance
+
+    if not _agent_instance:
+        return json.dumps({
+            "incidents": [],
+            "message": "Agent not initialized",
+        }, indent=2)
+
+    incidents = _agent_instance.get_incidents(limit=limit)
+
+    return json.dumps({
+        "incidents": [
+            {
+                "id": inc.id,
+                "intent_id": inc.intent_id,
+                "timestamp": inc.timestamp.isoformat(),
+                "metric": inc.metric,
+                "target": inc.target,
+                "current_value": inc.current_value,
+                "threshold": inc.threshold,
+                "severity": inc.severity,
+                "actions_taken": inc.actions_taken,
+                "diagnosis": inc.diagnosis.get("verdict") if inc.diagnosis else None,
+            }
+            for inc in incidents
+        ],
+        "count": len(incidents),
+        "total_incidents": len(_agent_instance.get_incidents()),
+    }, indent=2)
+
+
+@mcp.tool()
+async def agent_status() -> str:
+    """
+    Get current status of the monitoring agent.
+
+    Returns:
+        JSON with agent status, uptime, and statistics
+    """
+    global _agent_instance
+
+    if not _agent_instance:
+        return json.dumps({
+            "status": "not_initialized",
+            "message": "Use start_agent() or set_intent() to begin monitoring",
+        }, indent=2)
+
+    return json.dumps({
+        "status": "running" if _agent_instance.running else "stopped",
+        "intents": {
+            "total": len(_agent_instance.get_intents()),
+            "enabled": sum(1 for i in _agent_instance.get_intents() if i.enabled),
+        },
+        "incidents": {
+            "total": len(_agent_instance.get_incidents()),
+            "recent_10": len(_agent_instance.get_incidents(limit=10)),
+        },
+        "config": {
+            "poll_interval": _agent_instance.config.poll_interval,
+            "alert_cooldown": _agent_instance.config.alert_cooldown,
+        },
+    }, indent=2)
