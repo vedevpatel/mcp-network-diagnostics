@@ -95,6 +95,39 @@ class SimulatedCollector:
                 dst_interface=link.dst_interface
             )
 
+    def get_config(self, device_id: str) -> str:
+        """Get simulated configuration for a device."""
+        # Generate a simple config based on device state
+        device = self.devices.get(device_id)
+        if not device:
+            return ""
+
+        config_lines = [
+            f"hostname {device_id}",
+            "!",
+            "interface Management1",
+            " no shutdown",
+            "!",
+        ]
+
+        for iface in device.interfaces:
+            config_lines.extend([
+                f"interface {iface.name}",
+                " no shutdown",
+                " description Link interface",
+                "!",
+            ])
+
+        # Add some variation based on call count (simulates config changes)
+        if self._call_count >= 10 and device_id == "R3":
+            config_lines.extend([
+                "! Configuration change at call 10",
+                "logging buffered 10000",
+                "!",
+            ])
+
+        return "\n".join(config_lines)
+
     def refresh(self) -> None:
         """Apply small random metric changes to simulate time-varying data.
 
@@ -105,6 +138,18 @@ class SimulatedCollector:
         """
         self._call_count += 1
         rng = random.Random(self._call_count)
+
+        # Track health for all devices (simulated - always successful)
+        from mcp_network.collectors.health import get_health_tracker
+        health_tracker = get_health_tracker()
+        for device_id in self.devices:
+            health_tracker.record_success(device_id)
+
+        # Track config snapshots
+        from mcp_network.config import get_config_tracker
+        config_tracker = get_config_tracker()
+        for device_id in self.devices:
+            config_tracker.add_snapshot(device_id, self.get_config(device_id))
 
         for i, (device_id, device) in enumerate(self.devices.items(), start=1):
             cpu_congested = i % 3 == 0

@@ -1,0 +1,45 @@
+# Multi-device example using DevNet Always-On sandboxes
+# Combines IOS XE and Nexus 9K devices
+#
+# Note: For full multi-device testing, consider reserving a sandbox:
+# https://devnetsandbox.cisco.com/RM/Diagram/Index/6b023525-4e7f-4755-81ae-05ac500d464a
+
+devices:
+  # IOS XE Device (Always-On)
+  - id: cat8kv-1
+    host: sandbox-iosxe-latest-1.cisco.com
+    port: 22
+    username: admin
+    password: C1sco12345
+    device_type: iosxe
+    type: router
+
+  # For testing with real multi-device topology, add more devices here
+  # Example: Reserve Nexus 9K sandbox and add:
+  # - id: nexus9k-1
+  #   host: <sandbox-host>
+  #   port: 22
+  #   username: admin
+  #   password: <password>
+  #   device_type: nxos
+  #   type: switch
+
+# Define links between devices (for path analysis)
+# links:
+#   - src_device: cat8kv-1
+#     src_interface: GigabitEthernet1
+#     dst_device: nexus9k-1
+#     dst_interface: Ethernet1/1
+#     default_latency_ms: 2.5
+
+thresholds:
+  cpu: 80.0
+  utilization: 75.0
+  errors: 100
+  anomaly:
+    z_score_threshold: 2.0
+    rate_shift_threshold: 3.0
+    volatility_ratio_threshold: 3.0
+    min_samples: 5
+
+local_device: cat8kv-1

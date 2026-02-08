@@ -798,3 +798,448 @@ async def run_command(device_id: str, command: str) -> str:
         }, indent=2)
     except ValueError as e:
         return json.dumps({"error": str(e), "device_id": device_id}, indent=2)
+
+
+# ============================================================================
+# P2a: Collection Health Tools
+# ============================================================================
+
+@mcp.tool()
+async def get_collection_health() -> str:
+    """
+    Get data collection health status for all devices.
+
+    Shows per-device reachability, data staleness, failure rates, and
+    overall collection quality score. Use this to understand data quality
+    before trusting diagnostic results.
+
+    Returns:
+        JSON object with:
+        - collection_quality_score: 0.0 to 1.0 (1.0 = perfect)
+        - reachability_percentage: % of devices currently reachable
+        - device_health: Per-device health details
+        - stale_devices: List of devices with stale data
+        - unreachable_devices: List of unreachable devices
+        - summary: Human-readable summary
+    """
+    from mcp_network.collectors.health import get_health_tracker
+
+    health_tracker = get_health_tracker()
+    health_summary = health_tracker.get_health_summary()
+
+    # Build device health details
+    device_details = {}
+    for device_id, health in health_summary.device_health.items():
+        device_details[device_id] = {
+            "reachable": health.reachable,
+            "staleness": health.staleness_level,
+            "data_age_seconds": round(health.data_age_seconds, 1),
+            "failure_rate": round(health.failure_rate * 100, 1),
+            "consecutive_failures": health.consecutive_failures,
+            "last_error": health.last_error,
+        }
+
+    stale_devices = [
+        device_id for device_id, health in health_summary.device_health.items()
+        if health.is_stale
+    ]
+
+    unreachable_devices = [
+        device_id for device_id, health in health_summary.device_health.items()
+        if not health.reachable
+    ]
+
+    return json.dumps({
+        "collection_quality_score": round(health_summary.collection_quality_score, 3),
+        "reachability_percentage": round(health_summary.reachability_percentage, 1),
+        "total_devices": health_summary.total_devices,
+        "reachable_devices": health_summary.reachable_devices,
+        "unreachable_devices_count": health_summary.unreachable_devices,
+        "stale_devices_count": health_summary.stale_devices,
+        "device_health": device_details,
+        "stale_devices": stale_devices,
+        "unreachable_devices": unreachable_devices,
+        "summary": health_summary.summary(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }, indent=2)
+
+
+# ============================================================================
+# P2b: Config Change Correlation Tools
+# ============================================================================
+
+@mcp.tool()
+async def collect_device_configs() -> str:
+    """
+    Collect configuration snapshots from all devices.
+
+    Triggers on-demand config collection via SSH for tracking changes.
+    Automatically detects and logs any config changes since last collection.
+
+    Only works with SSH collector. Returns collection summary.
+
+    Returns:
+        JSON object with:
+        - successful: Number of devices successfully collected
+        - failed: Number of devices that failed collection
+        - changes_detected: List of devices with detected changes
+        - timestamp: Collection timestamp
+    """
+    network = get_network()
+
+    if not hasattr(network, "collect_configs"):
+        return json.dumps({
+            "error": "collect_device_configs requires the ssh collector. Current collector does not support config collection.",
+            "hint": "Start the server with --collector ssh",
+        }, indent=2)
+
+    from mcp_network.config import get_config_tracker
+
+    config_tracker = get_config_tracker()
+
+    # Track pre-collection state
+    pre_hashes = {}
+    for device_id in network.devices:
+        snapshot = config_tracker.get_latest_snapshot(device_id)
+        if snapshot:
+            pre_hashes[device_id] = snapshot.config_hash
+
+    # Collect configs
+    try:
+        network.collect_configs()
+    except Exception as e:
+        return json.dumps({
+            "error": f"Config collection failed: {e}",
+        }, indent=2)
+
+    # Detect changes
+    changes_detected = []
+    successful = 0
+    failed = 0
+
+    for device_id in network.devices:
+        snapshot = config_tracker.get_latest_snapshot(device_id)
+        if snapshot:
+            successful += 1
+            old_hash = pre_hashes.get(device_id)
+            if old_hash and old_hash != snapshot.config_hash:
+                changes_detected.append(device_id)
+        else:
+            failed += 1
+
+    return json.dumps({
+        "successful": successful,
+        "failed": failed,
+        "changes_detected": changes_detected,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }, indent=2)
+
+
+@mcp.tool()
+async def get_config_history(device_id: str, limit: int = 10) -> str:
+    """
+    Get configuration change history for a device.
+
+    Shows recent config changes with timestamps and hashes. Use this to
+    correlate anomalies with configuration changes.
+
+    Args:
+        device_id: Target device ID
+        limit: Maximum number of changes to return (default 10)
+
+    Returns:
+        JSON object with:
+        - device_id: Target device
+        - changes: List of config changes with timestamps
+        - latest_config_hash: Current config hash
+        - change_count: Total changes tracked
+    """
+    from mcp_network.config import get_config_tracker
+
+    config_tracker = get_config_tracker()
+    changes = config_tracker.get_change_history(device_id, limit=limit)
+    latest_snapshot = config_tracker.get_latest_snapshot(device_id)
+
+    change_list = []
+    for change in changes:
+        change_list.append({
+            "timestamp": datetime.fromtimestamp(change.change_time, timezone.utc).isoformat(),
+            "age_seconds": round(change.age_seconds, 1),
+            "old_hash": change.old_hash,
+            "new_hash": change.new_hash,
+            "description": change.description,
+        })
+
+    return json.dumps({
+        "device_id": device_id,
+        "changes": change_list,
+        "latest_config_hash": latest_snapshot.config_hash if latest_snapshot else None,
+        "change_count": len(changes),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }, indent=2)
+
+
+@mcp.tool()
+async def compare_configs(device_id: str, time_a: str, time_b: str) -> str:
+    """
+    Compare device configurations at two points in time.
+
+    Generates a unified diff showing what changed between two config snapshots.
+    Useful for root cause analysis when anomalies correlate with config changes.
+
+    Args:
+        device_id: Target device ID
+        time_a: Earlier timestamp (ISO format or seconds since epoch)
+        time_b: Later timestamp (ISO format or seconds since epoch)
+
+    Returns:
+        JSON object with:
+        - device_id: Target device
+        - time_a, time_b: Resolved timestamps
+        - diff: Unified diff output (lines starting with + or -)
+        - changed: Boolean indicating if configs differ
+    """
+    from mcp_network.config import get_config_tracker
+
+    config_tracker = get_config_tracker()
+
+    # Parse timestamps
+    try:
+        if time_a.replace(".", "").isdigit():
+            timestamp_a = float(time_a)
+        else:
+            timestamp_a = datetime.fromisoformat(time_a.replace("Z", "+00:00")).timestamp()
+
+        if time_b.replace(".", "").isdigit():
+            timestamp_b = float(time_b)
+        else:
+            timestamp_b = datetime.fromisoformat(time_b.replace("Z", "+00:00")).timestamp()
+    except (ValueError, AttributeError) as e:
+        return json.dumps({
+            "error": f"Invalid timestamp format: {e}",
+            "hint": "Use ISO format (2024-01-01T12:00:00Z) or Unix timestamp",
+        }, indent=2)
+
+    diff = config_tracker.diff_configs(device_id, timestamp_a, timestamp_b)
+
+    if diff is None:
+        return json.dumps({
+            "error": "Config snapshots not found for specified times",
+            "device_id": device_id,
+            "time_a": time_a,
+            "time_b": time_b,
+        }, indent=2)
+
+    return json.dumps({
+        "device_id": device_id,
+        "time_a": datetime.fromtimestamp(timestamp_a, timezone.utc).isoformat(),
+        "time_b": datetime.fromtimestamp(timestamp_b, timezone.utc).isoformat(),
+        "diff": diff,
+        "changed": diff != "No changes detected",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }, indent=2)
+
+
+@mcp.tool()
+async def check_config_correlation(device_id: str, window_seconds: float = 1800.0) -> str:
+    """
+    Check if device had config changes recently that might correlate with anomalies.
+
+    Looks for config changes within the specified time window. Use this during
+    incident investigation to quickly check if a config change preceded the issue.
+
+    Args:
+        device_id: Target device ID
+        window_seconds: Time window to check (default 1800 = 30 minutes)
+
+    Returns:
+        JSON object with:
+        - device_id: Target device
+        - had_recent_change: Boolean
+        - changes: List of recent changes
+        - window_seconds: Search window used
+    """
+    from mcp_network.config import get_config_tracker
+
+    config_tracker = get_config_tracker()
+    changes = config_tracker.get_changes_in_window(device_id, window_seconds)
+
+    change_list = []
+    for change in changes:
+        change_list.append({
+            "timestamp": datetime.fromtimestamp(change.change_time, timezone.utc).isoformat(),
+            "age_seconds": round(change.age_seconds, 1),
+            "description": change.description,
+        })
+
+    return json.dumps({
+        "device_id": device_id,
+        "had_recent_change": len(changes) > 0,
+        "changes": change_list,
+        "window_seconds": window_seconds,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }, indent=2)
+
+
+# ============================================================================
+# P2c: Causal Root Cause Analysis Tools
+# ============================================================================
+
+@mcp.tool()
+async def explain_incident(context: str = "all") -> str:
+    """
+    Perform causal root cause analysis on recent anomalies.
+
+    Analyzes temporal and topological relationships between anomalies to
+    identify the most likely root cause(s). Uses causal graph analysis to
+    determine which device/metric triggered cascading failures.
+
+    Args:
+        context: Analysis context - "all" for network-wide, or specific
+                 device_id to focus on incidents affecting that device
+
+    Returns:
+        JSON object with:
+        - root_causes: List of identified root causes with confidence scores
+        - causal_graph: Graph structure showing cause/effect relationships
+        - affected_devices: List of devices impacted by the incident
+        - timeline: Chronological event timeline
+        - explanation: Human-readable incident summary
+    """
+    from mcp_network.causal import build_causal_graph, identify_root_causes, AnomalyEvent
+
+    # Snapshot current metrics to get latest anomalies
+    _snapshot_metrics()
+
+    # Collect all recent anomalies
+    anomaly_config = _get_anomaly_config()
+    all_events = []
+
+    network = get_network()
+    for device_id, device in network.devices.items():
+        # Skip if context is specific and doesn't match
+        if context != "all" and device_id != context:
+            continue
+
+        # Check CPU
+        cpu_series = _metric_store.get_series(device_id, "cpu")
+        if cpu_series and len(cpu_series.samples) >= anomaly_config["min_samples"]:
+            cpu_anomalies = detect_all_anomalies(cpu_series, "cpu", **anomaly_config)
+            for anom in cpu_anomalies:
+                all_events.append(AnomalyEvent(
+                    device_id=device_id,
+                    metric="cpu",
+                    anomaly_type=anom.anomaly_type,
+                    timestamp=cpu_series.samples[-1].timestamp,
+                    severity=anom.severity,
+                    score=anom.score,
+                ))
+
+        # Check interfaces
+        for iface in device.interfaces:
+            util_series = _metric_store.get_series(device_id, f"{iface.name}_utilization")
+            if util_series and len(util_series.samples) >= anomaly_config["min_samples"]:
+                util_anomalies = detect_all_anomalies(util_series, f"{iface.name}_utilization", **anomaly_config)
+                for anom in util_anomalies:
+                    all_events.append(AnomalyEvent(
+                        device_id=device_id,
+                        metric=f"{iface.name}_utilization",
+                        anomaly_type=anom.anomaly_type,
+                        timestamp=util_series.samples[-1].timestamp,
+                        severity=anom.severity,
+                        score=anom.score,
+                    ))
+
+            err_series = _metric_store.get_series(device_id, f"{iface.name}_errors")
+            if err_series and len(err_series.samples) >= anomaly_config["min_samples"]:
+                err_anomalies = detect_all_anomalies(err_series, f"{iface.name}_errors", **anomaly_config)
+                for anom in err_anomalies:
+                    all_events.append(AnomalyEvent(
+                        device_id=device_id,
+                        metric=f"{iface.name}_errors",
+                        anomaly_type=anom.anomaly_type,
+                        timestamp=err_series.samples[-1].timestamp,
+                        severity=anom.severity,
+                        score=anom.score,
+                    ))
+
+    if not all_events:
+        return json.dumps({
+            "root_causes": [],
+            "affected_devices": [],
+            "timeline": [],
+            "explanation": "No anomalies detected in recent data.",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }, indent=2)
+
+    # Build causal graph
+    causal_graph = build_causal_graph(all_events, network.graph, max_time_window_seconds=300.0)
+
+    # Identify root causes
+    root_causes = identify_root_causes(causal_graph, min_confidence=0.4)
+
+    # Format results
+    root_cause_list = []
+    for rc in root_causes:
+        root_cause_list.append({
+            "device_id": rc.root_event.device_id,
+            "metric": rc.root_event.metric,
+            "anomaly_type": rc.root_event.anomaly_type,
+            "confidence": round(rc.confidence, 3),
+            "impact_score": round(rc.impact_score, 2),
+            "affected_devices": rc.affected_devices,
+            "evidence": rc.evidence,
+            "explanation": rc.explanation,
+        })
+
+    # Build timeline
+    timeline = []
+    for event in sorted(all_events, key=lambda e: e.timestamp):
+        timeline.append({
+            "timestamp": datetime.fromtimestamp(event.timestamp, timezone.utc).isoformat(),
+            "device_id": event.device_id,
+            "metric": event.metric,
+            "anomaly_type": event.anomaly_type,
+            "severity": event.severity,
+        })
+
+    # Causal graph structure
+    graph_edges = []
+    for edge in causal_graph.edges:
+        graph_edges.append({
+            "cause": edge.cause_event.event_id,
+            "effect": edge.effect_event.event_id,
+            "confidence": round(edge.confidence, 3),
+            "time_delta_seconds": round(edge.time_delta_seconds, 1),
+            "evidence": edge.evidence,
+        })
+
+    affected_devices = list(set(e.device_id for e in all_events))
+
+    # Generate explanation
+    if root_causes:
+        top_root = root_causes[0]
+        explanation = (
+            f"Incident analysis: {len(all_events)} anomaly events detected across "
+            f"{len(affected_devices)} devices. Most likely root cause: "
+            f"{top_root.root_event.device_id} {top_root.root_event.metric} "
+            f"({top_root.confidence:.0%} confidence). "
+            f"Affected {len(top_root.affected_devices)} devices."
+        )
+    else:
+        explanation = (
+            f"{len(all_events)} anomaly events detected but no clear root cause identified. "
+            "Events may be independent or correlation confidence is low."
+        )
+
+    return json.dumps({
+        "root_causes": root_cause_list,
+        "causal_graph": {
+            "events": len(all_events),
+            "edges": graph_edges,
+        },
+        "affected_devices": affected_devices,
+        "timeline": timeline,
+        "explanation": explanation,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }, indent=2)

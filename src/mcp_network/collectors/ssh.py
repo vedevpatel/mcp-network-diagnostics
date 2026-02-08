@@ -7,6 +7,7 @@ and parsers automatically.
 """
 
 import logging
+import time
 import networkx as nx
 from typing import Dict, Optional
 from netmiko import ConnectHandler
@@ -78,8 +79,16 @@ class SSHCollector:
     Supports mixed IOS-XR and IOS-XE devices in a single topology.
     """
 
-    def __init__(self, topology_file: str, ssh_timeout: int = 30):
+    def __init__(
+        self,
+        topology_file: str,
+        ssh_timeout: int = 30,
+        max_retries: int = 3,
+        backoff_factor: float = 2.0,
+    ):
         self.ssh_timeout = ssh_timeout
+        self.max_retries = max_retries
+        self.backoff_factor = backoff_factor
         self.topology = load_topology(topology_file)
         self.local_device: Optional[str] = self.topology.get("local_device")
         self.thresholds: dict = self.topology.get("thresholds", {})
@@ -115,6 +124,39 @@ class SSHCollector:
         except Exception as e:
             logger.error(f"Failed to connect to {device_config['id']}: {e}")
             return None
+
+    def _collect_device_with_retry(self, device_config: dict) -> Optional[Device]:
+        """Collect device data with retry logic and exponential backoff."""
+        from mcp_network.collectors.health import get_health_tracker
+
+        device_id = device_config["id"]
+        health_tracker = get_health_tracker()
+
+        for attempt in range(self.max_retries):
+            try:
+                device = self._collect_device(device_config)
+                if device:
+                    health_tracker.record_success(device_id)
+                    return device
+                else:
+                    raise Exception("Collection returned None")
+            except Exception as e:
+                error_msg = str(e)
+                logger.warning(
+                    f"Collection attempt {attempt + 1}/{self.max_retries} failed for {device_id}: {error_msg}"
+                )
+
+                if attempt < self.max_retries - 1:
+                    wait_time = self.backoff_factor ** attempt
+                    logger.debug(f"Retrying {device_id} in {wait_time}s...")
+                    time.sleep(wait_time)
+                else:
+                    # Final failure
+                    logger.error(f"All {self.max_retries} attempts failed for {device_id}")
+                    health_tracker.record_failure(device_id, error_msg)
+                    return None
+
+        return None
 
     def _collect_device(self, device_config: dict) -> Optional[Device]:
         """Connect, run show commands, parse output, return a Device."""
@@ -199,22 +241,31 @@ class SSHCollector:
                 pass
 
     def _refresh_metrics(self):
-        """Poll every device and rebuild the graph."""
+        """Poll every device and rebuild the graph.
+
+        Supports partial collection: continues even if some devices fail.
+        Failed devices are tracked in health monitoring system.
+        """
         self.devices.clear()
         self.links.clear()
         self.graph.clear()
 
+        successful_devices = 0
+        failed_devices = 0
+
         for device_config in self.topology.get("devices", []):
-            device = self._collect_device(device_config)
+            device = self._collect_device_with_retry(device_config)
             if device:
                 self.devices[device.device_id] = device
                 self.graph.add_node(device.device_id)
+                successful_devices += 1
                 logger.info(
                     f"{device.device_id}: CPU={device.cpu_usage:.1f}% "
                     f"Mem={device.memory_usage:.1f}% Intf={len(device.interfaces)}"
                 )
             else:
-                logger.warning(f"Skipping {device_config['id']} — collection failed")
+                failed_devices += 1
+                logger.warning(f"Skipping {device_config['id']} — collection failed after {self.max_retries} retries")
 
         for link_config in self.topology.get("links", []):
             link = Link(
@@ -233,7 +284,10 @@ class SSHCollector:
                 dst_interface=link.dst_interface,
             )
 
-        logger.info(f"SSH collector ready: {len(self.devices)} devices, {len(self.links)} links")
+        logger.info(
+            f"SSH collector ready: {successful_devices} devices collected, "
+            f"{failed_devices} failed, {len(self.links)} links"
+        )
 
     def _device_config(self, device_id: str) -> Optional[dict]:
         """Look up raw topology config for a device by ID."""
@@ -241,6 +295,30 @@ class SSHCollector:
             if cfg["id"] == device_id:
                 return cfg
         return None
+
+    def collect_configs(self) -> None:
+        """Collect and track configuration snapshots for all devices.
+
+        Called periodically to track config changes over time.
+        Failures are logged but do not stop collection.
+        """
+        from mcp_network.config import get_config_tracker
+
+        config_tracker = get_config_tracker()
+        successful = 0
+        failed = 0
+
+        for device_id in self.devices:
+            try:
+                config_text = self.run_command(device_id, "show running-config")
+                config_tracker.add_snapshot(device_id, config_text)
+                successful += 1
+                logger.debug(f"Collected config snapshot for {device_id}")
+            except Exception as e:
+                failed += 1
+                logger.warning(f"Failed to collect config for {device_id}: {e}")
+
+        logger.info(f"Config collection complete: {successful} successful, {failed} failed")
 
     def run_command(self, device_id: str, command: str) -> str:
         """
