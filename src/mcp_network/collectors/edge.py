@@ -332,12 +332,199 @@ class EdgeCollector:
 
     async def _get_wifi_stats_linux(self) -> Optional[WifiResult]:
         """Get WiFi stats on Linux using iw or iwconfig."""
-        # Implementation placeholder - would use iw/iwconfig parsing
+        try:
+            # Try iw first (modern approach)
+            if await self._command_exists("iw"):
+                # Find wireless interface
+                proc = await asyncio.create_subprocess_exec(
+                    "iw", "dev",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, _ = await proc.communicate()
+                output = stdout.decode()
+
+                # Extract interface name (e.g., wlan0, wlp2s0)
+                interface = None
+                for line in output.split("\n"):
+                    if "Interface" in line:
+                        interface = line.split()[1]
+                        break
+
+                if not interface:
+                    return None
+
+                # Get link info
+                proc = await asyncio.create_subprocess_exec(
+                    "iw", "dev", interface, "link",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, _ = await proc.communicate()
+                link_output = stdout.decode()
+
+                # Get station info for signal strength
+                proc = await asyncio.create_subprocess_exec(
+                    "iw", "dev", interface, "station", "dump",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, _ = await proc.communicate()
+                station_output = stdout.decode()
+
+                # Parse output
+                ssid = None
+                signal = None
+
+                for line in link_output.split("\n"):
+                    if "SSID:" in line:
+                        ssid = line.split("SSID:")[1].strip()
+
+                for line in station_output.split("\n"):
+                    if "signal:" in line:
+                        # Format: "signal: -52 dBm"
+                        parts = line.split()
+                        if len(parts) >= 2:
+                            signal = int(parts[1])
+
+                if signal is None:
+                    return None
+
+                # Classify quality
+                if signal >= -50:
+                    quality = "excellent"
+                elif signal >= -60:
+                    quality = "good"
+                elif signal >= -70:
+                    quality = "fair"
+                else:
+                    quality = "poor"
+
+                return WifiResult(
+                    ssid=ssid,
+                    signal_strength_dbm=signal,
+                    noise_dbm=None,
+                    channel=None,
+                    quality=quality,
+                )
+
+            # Fallback to iwconfig (older systems)
+            elif await self._command_exists("iwconfig"):
+                proc = await asyncio.create_subprocess_exec(
+                    "iwconfig",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, _ = await proc.communicate()
+                output = stdout.decode()
+
+                # Parse iwconfig output
+                ssid = None
+                signal = None
+
+                for line in output.split("\n"):
+                    if "ESSID:" in line:
+                        # Format: ESSID:"NetworkName"
+                        parts = line.split("ESSID:")
+                        if len(parts) > 1:
+                            ssid = parts[1].strip().strip('"')
+
+                    if "Signal level=" in line:
+                        # Format: Signal level=-52 dBm
+                        import re
+                        match = re.search(r'Signal level=(-?\d+)', line)
+                        if match:
+                            signal = int(match.group(1))
+
+                if signal is None:
+                    return None
+
+                # Classify quality
+                if signal >= -50:
+                    quality = "excellent"
+                elif signal >= -60:
+                    quality = "good"
+                elif signal >= -70:
+                    quality = "fair"
+                else:
+                    quality = "poor"
+
+                return WifiResult(
+                    ssid=ssid,
+                    signal_strength_dbm=signal,
+                    noise_dbm=None,
+                    channel=None,
+                    quality=quality,
+                )
+
+        except Exception:
+            pass
+
         return None
 
     async def _get_wifi_stats_windows(self) -> Optional[WifiResult]:
         """Get WiFi stats on Windows using netsh."""
-        # Implementation placeholder - would use netsh wlan show interfaces
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "netsh", "wlan", "show", "interfaces",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await proc.communicate()
+            output = stdout.decode()
+
+            # Parse netsh output
+            ssid = None
+            signal = None
+            channel = None
+
+            for line in output.split("\n"):
+                line = line.strip()
+
+                if "SSID" in line and ":" in line and "BSSID" not in line:
+                    ssid = line.split(":", 1)[1].strip()
+
+                if "Signal" in line and ":" in line:
+                    # Format: "Signal                 : 85%"
+                    signal_str = line.split(":", 1)[1].strip().rstrip("%")
+                    try:
+                        signal_pct = int(signal_str)
+                        # Convert percentage to dBm (approximate)
+                        # 100% = -30 dBm, 0% = -90 dBm
+                        signal = -90 + (signal_pct * 0.6)
+                    except ValueError:
+                        pass
+
+                if "Channel" in line and ":" in line:
+                    try:
+                        channel = int(line.split(":", 1)[1].strip())
+                    except ValueError:
+                        pass
+
+            if signal is None:
+                return None
+
+            # Classify quality based on dBm
+            if signal >= -50:
+                quality = "excellent"
+            elif signal >= -60:
+                quality = "good"
+            elif signal >= -70:
+                quality = "fair"
+            else:
+                quality = "poor"
+
+            return WifiResult(
+                ssid=ssid,
+                signal_strength_dbm=int(signal),
+                noise_dbm=None,
+                channel=channel,
+                quality=quality,
+            )
+
+        except Exception:
+            pass
+
         return None
 
     def _get_default_gateway(self) -> Optional[str]:
@@ -473,22 +660,63 @@ class EdgeCollector:
         import re
 
         for line in output.split("\n"):
+            line = line.strip()
+
+            # Skip header/footer lines
+            if not line or "Tracing route" in line or "Trace complete" in line:
+                continue
+
             # Match lines like: "  1    <1 ms    <1 ms    <1 ms  192.168.1.1"
-            match = re.match(r'\s*(\d+)\s+(?:<?[\d<]+\s*ms\s*){3}\s+([^\s]+)', line)
-            if match:
-                hop_num = int(match.group(1))
-                ip_or_host = match.group(2)
+            # Or: "  2    10 ms     9 ms    11 ms  router.example.com [10.0.0.1]"
+            # Or: "  3     *        *        *     Request timed out."
 
-                # Try to extract latency
-                latency_match = re.search(r'(\d+)\s*ms', line)
-                latency = float(latency_match.group(1)) if latency_match else 0.0
+            hop_match = re.match(r'\s*(\d+)\s+', line)
+            if not hop_match:
+                continue
 
+            hop_num = int(hop_match.group(1))
+
+            # Check for timeout
+            if "Request timed out" in line or "*" in line:
                 hops.append(HopResult(
                     number=hop_num,
-                    ip=ip_or_host if self._is_ip(ip_or_host) else None,
-                    hostname=ip_or_host if not self._is_ip(ip_or_host) else None,
-                    latency_ms=latency,
+                    ip=None,
+                    hostname="*",
+                    latency_ms=0.0,
+                    loss_pct=100.0,
                 ))
+                continue
+
+            # Extract latency (average of the three values)
+            latency_values = re.findall(r'(\d+)\s*ms', line)
+            if latency_values:
+                latency = sum(int(v) for v in latency_values) / len(latency_values)
+            else:
+                latency = 0.0
+
+            # Extract hostname and IP
+            # Format: "hostname [ip]" or just "ip" or just "hostname"
+            bracket_match = re.search(r'([^\s\[]+)\s+\[([^\]]+)\]', line)
+            if bracket_match:
+                hostname = bracket_match.group(1)
+                ip = bracket_match.group(2)
+            else:
+                # No brackets - extract last token
+                tokens = line.split()
+                last_token = tokens[-1] if tokens else ""
+                if self._is_ip(last_token):
+                    hostname = None
+                    ip = last_token
+                else:
+                    hostname = last_token
+                    ip = None
+
+            hops.append(HopResult(
+                number=hop_num,
+                ip=ip if ip and self._is_ip(ip) else None,
+                hostname=hostname if hostname and hostname != ip else None,
+                latency_ms=latency,
+            ))
 
         return hops
 

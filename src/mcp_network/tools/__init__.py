@@ -2,6 +2,7 @@
 Network diagnostic MCP tools
 """
 
+import asyncio
 import json
 import time
 from datetime import datetime, timezone
@@ -1782,3 +1783,95 @@ async def clear_baseline() -> str:
         "status": "baseline_cleared",
         "message": "All baseline data has been cleared. Run record_baseline() to start fresh.",
     }, indent=2)
+
+
+@mcp.tool()
+async def run_speedtest() -> str:
+    """
+    Run a bandwidth speed test to measure download/upload speeds.
+
+    Uses speedtest-cli if available, otherwise provides installation instructions.
+    Tests both download and upload speeds to measure actual bandwidth.
+
+    Note: This test transfers data and may take 30-60 seconds to complete.
+
+    Returns:
+        JSON with download/upload speeds in Mbps, ping, and server info
+    """
+    # Check if speedtest-cli is installed
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "which", "speedtest-cli",
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        await proc.wait()
+        has_speedtest = proc.returncode == 0
+    except Exception:
+        has_speedtest = False
+
+    if not has_speedtest:
+        return json.dumps({
+            "error": "speedtest-cli not installed",
+            "install_instructions": {
+                "macOS": "brew install speedtest-cli",
+                "Linux": "pip install speedtest-cli  OR  apt install speedtest-cli",
+                "Windows": "pip install speedtest-cli",
+            },
+            "hint": "After installing, run this tool again to measure bandwidth",
+        }, indent=2)
+
+    try:
+        # Run speedtest with JSON output
+        proc = await asyncio.create_subprocess_exec(
+            "speedtest-cli", "--json",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=90.0)
+
+        if proc.returncode != 0:
+            return json.dumps({
+                "error": "speedtest failed",
+                "stderr": stderr.decode(),
+            }, indent=2)
+
+        # Parse JSON output
+        result = json.loads(stdout.decode())
+
+        # Extract key metrics
+        download_bps = result.get("download", 0)
+        upload_bps = result.get("upload", 0)
+        ping_ms = result.get("ping", 0)
+        server = result.get("server", {})
+
+        # Convert to Mbps
+        download_mbps = download_bps / 1_000_000
+        upload_mbps = upload_bps / 1_000_000
+
+        return json.dumps({
+            "download_mbps": round(download_mbps, 2),
+            "upload_mbps": round(upload_mbps, 2),
+            "ping_ms": round(ping_ms, 1),
+            "server": {
+                "name": server.get("name", "Unknown"),
+                "country": server.get("country", "Unknown"),
+                "sponsor": server.get("sponsor", "Unknown"),
+            },
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }, indent=2)
+
+    except asyncio.TimeoutError:
+        return json.dumps({
+            "error": "speedtest timed out after 90 seconds",
+            "hint": "Check your internet connection and try again",
+        }, indent=2)
+    except json.JSONDecodeError:
+        return json.dumps({
+            "error": "failed to parse speedtest output",
+            "hint": "speedtest-cli may be outdated. Try: pip install --upgrade speedtest-cli",
+        }, indent=2)
+    except Exception as e:
+        return json.dumps({
+            "error": f"speedtest failed: {e}",
+        }, indent=2)
