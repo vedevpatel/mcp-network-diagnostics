@@ -17,6 +17,7 @@ class Device:
     first_seen: datetime
     last_seen: datetime
     metadata: dict
+    tenant_id: str = "default"
 
     def to_dict(self) -> dict:
         """Convert to dictionary for storage."""
@@ -28,6 +29,7 @@ class Device:
             "first_seen": self.first_seen.isoformat(),
             "last_seen": self.last_seen.isoformat(),
             "metadata": json.dumps(self.metadata),
+            "tenant_id": self.tenant_id,
         }
 
     @classmethod
@@ -41,6 +43,7 @@ class Device:
             first_seen=datetime.fromisoformat(row["first_seen"]),
             last_seen=datetime.fromisoformat(row["last_seen"]),
             metadata=json.loads(row["metadata"]) if row["metadata"] else {},
+            tenant_id=row["tenant_id"] if "tenant_id" in row.keys() else "default",
         )
 
 
@@ -53,6 +56,7 @@ class Metric:
     value: float
     timestamp: datetime
     id: Optional[int] = None
+    tenant_id: str = "default"
 
     def to_dict(self) -> dict:
         """Convert to dictionary for storage."""
@@ -61,6 +65,7 @@ class Metric:
             "metric_name": self.metric_name,
             "value": self.value,
             "timestamp": self.timestamp.isoformat(),
+            "tenant_id": self.tenant_id,
         }
 
     @classmethod
@@ -72,6 +77,7 @@ class Metric:
             metric_name=row["metric_name"],
             value=row["value"],
             timestamp=datetime.fromisoformat(row["timestamp"]),
+            tenant_id=row["tenant_id"] if "tenant_id" in row.keys() else "default",
         )
 
 
@@ -88,6 +94,7 @@ class Incident:
     affected_devices: Optional[list[str]] = None
     causal_chain: Optional[dict] = None
     actions_taken: Optional[list[str]] = None
+    tenant_id: str = "default"
 
     def to_dict(self) -> dict:
         """Convert to dictionary for storage."""
@@ -101,6 +108,7 @@ class Incident:
             "affected_devices": json.dumps(self.affected_devices) if self.affected_devices else None,
             "causal_chain": json.dumps(self.causal_chain) if self.causal_chain else None,
             "actions_taken": json.dumps(self.actions_taken) if self.actions_taken else None,
+            "tenant_id": self.tenant_id,
         }
 
     @classmethod
@@ -116,6 +124,7 @@ class Incident:
             affected_devices=json.loads(row["affected_devices"]) if row["affected_devices"] else None,
             causal_chain=json.loads(row["causal_chain"]) if row["causal_chain"] else None,
             actions_taken=json.loads(row["actions_taken"]) if row["actions_taken"] else None,
+            tenant_id=row["tenant_id"] if "tenant_id" in row.keys() else "default",
         )
 
 
@@ -131,6 +140,7 @@ class Intent:
     active: bool = True
     last_checked: Optional[datetime] = None
     last_violated: Optional[datetime] = None
+    tenant_id: str = "default"
 
     def to_dict(self) -> dict:
         """Convert to dictionary for storage."""
@@ -143,6 +153,7 @@ class Intent:
             "active": 1 if self.active else 0,
             "last_checked": self.last_checked.isoformat() if self.last_checked else None,
             "last_violated": self.last_violated.isoformat() if self.last_violated else None,
+            "tenant_id": self.tenant_id,
         }
 
     @classmethod
@@ -157,6 +168,7 @@ class Intent:
             active=bool(row["active"]),
             last_checked=datetime.fromisoformat(row["last_checked"]) if row["last_checked"] else None,
             last_violated=datetime.fromisoformat(row["last_violated"]) if row["last_violated"] else None,
+            tenant_id=row["tenant_id"] if "tenant_id" in row.keys() else "default",
         )
 
 
@@ -169,6 +181,7 @@ class ConfigSnapshot:
     config_text: str
     captured_at: datetime
     id: Optional[int] = None
+    tenant_id: str = "default"
 
     def to_dict(self) -> dict:
         """Convert to dictionary for storage."""
@@ -177,6 +190,7 @@ class ConfigSnapshot:
             "config_hash": self.config_hash,
             "config_text": self.config_text,
             "captured_at": self.captured_at.isoformat(),
+            "tenant_id": self.tenant_id,
         }
 
     @classmethod
@@ -188,6 +202,7 @@ class ConfigSnapshot:
             config_hash=row["config_hash"],
             config_text=row["config_text"],
             captured_at=datetime.fromisoformat(row["captured_at"]),
+            tenant_id=row["tenant_id"] if "tenant_id" in row.keys() else "default",
         )
 
 

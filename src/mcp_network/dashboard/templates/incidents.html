@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}Incidents - MCP Network Diagnostics{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-title">Incident History (Last {{ days }} days)</div>
+    {% if incidents %}
+    <table>
+        <thead>
+            <tr>
+                <th>Severity</th>
+                <th>Summary</th>
+                <th>Affected Devices</th>
+                <th>Created</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for incident in incidents %}
+            <tr>
+                <td><span class="badge badge-{{ incident.severity }}">{{ incident.severity.upper() }}</span></td>
+                <td><a href="/incidents/{{ incident.id }}">{{ incident.summary }}</a></td>
+                <td>{{ incident.affected_devices|length if incident.affected_devices else 0 }}</td>
+                <td class="time">{{ incident.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                <td>
+                    {% if incident.resolved_at %}
+                        <span class="badge badge-success">Resolved</span>
+                    {% else %}
+                        <span class="badge badge-warning">Active</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p style="text-align: center; color: #8b949e; padding: 40px;">No incidents found</p>
+    {% endif %}
+</div>
+{% endblock %}

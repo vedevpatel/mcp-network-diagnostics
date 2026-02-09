@@ -16,8 +16,8 @@ class DeviceRepository:
         """Save or update device."""
         self.db.execute("""
             INSERT OR REPLACE INTO devices
-            (id, name, device_type, collector_type, first_seen, last_seen, metadata)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            (id, name, device_type, collector_type, first_seen, last_seen, metadata, tenant_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, tuple(device.to_dict().values()))
         self.db.commit()
 
@@ -53,15 +53,15 @@ class MetricRepository:
     def save(self, metric: Metric):
         """Save a metric."""
         self.db.execute("""
-            INSERT INTO metrics (device_id, metric_name, value, timestamp)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO metrics (device_id, metric_name, value, timestamp, tenant_id)
+            VALUES (?, ?, ?, ?, ?)
         """, tuple(metric.to_dict().values()))
         self.db.commit()
 
     def save_batch(self, metrics: List[Metric]):
         """Save multiple metrics efficiently."""
         self.db.executemany(
-            "INSERT INTO metrics (device_id, metric_name, value, timestamp) VALUES (?, ?, ?, ?)",
+            "INSERT INTO metrics (device_id, metric_name, value, timestamp, tenant_id) VALUES (?, ?, ?, ?, ?)",
             [tuple(m.to_dict().values()) for m in metrics]
         )
 
@@ -114,8 +114,8 @@ class IncidentRepository:
         self.db.execute("""
             INSERT OR REPLACE INTO incidents
             (id, created_at, resolved_at, severity, summary, root_cause,
-             affected_devices, causal_chain, actions_taken)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+             affected_devices, causal_chain, actions_taken, tenant_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, tuple(incident.to_dict().values()))
         self.db.commit()
 
@@ -179,8 +179,8 @@ class IntentRepository:
         self.db.execute("""
             INSERT OR REPLACE INTO intents
             (id, natural_language, parsed_intent, created_at, created_by,
-             active, last_checked, last_violated)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             active, last_checked, last_violated, tenant_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, tuple(intent.to_dict().values()))
         self.db.commit()
 
@@ -244,8 +244,8 @@ class ConfigRepository:
     def save(self, snapshot: ConfigSnapshot):
         """Save a config snapshot."""
         self.db.execute("""
-            INSERT INTO config_snapshots (device_id, config_hash, config_text, captured_at)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO config_snapshots (device_id, config_hash, config_text, captured_at, tenant_id)
+            VALUES (?, ?, ?, ?, ?)
         """, tuple(snapshot.to_dict().values()))
         self.db.commit()
 

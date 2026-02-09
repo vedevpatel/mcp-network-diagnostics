@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block title %}Overview - MCP Network Diagnostics{% endblock %}
+
+{% block content %}
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-label">Network Health</div>
+        <div class="stat-value health-score {% if health_score >= 90 %}health-good{% elif health_score >= 70 %}health-warning{% else %}health-critical{% endif %}">
+            {{ health_score }}%
+        </div>
+        <div class="stat-sub">{{ healthy_devices }} of {{ device_count }} devices healthy</div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-label">Devices</div>
+        <div class="stat-value">{{ device_count }}</div>
+        <div class="stat-sub">{{ healthy_devices }} healthy</div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-label">Active Incidents</div>
+        <div class="stat-value">{{ active_incident_count }}</div>
+        <div class="stat-sub">{{ critical_incident_count }} critical</div>
+    </div>
+
+    <div class="stat-card">
+        <div class="stat-label">Active Intents</div>
+        <div class="stat-value">{{ active_intent_count }}</div>
+        <div class="stat-sub">Monitoring goals</div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-title">
+        <span>Recent Incidents</span>
+        <a href="/incidents" class="btn-secondary btn">View All</a>
+    </div>
+
+    <div hx-get="/partials/incidents" hx-trigger="every 30s" hx-swap="innerHTML">
+        {% include "partials/incidents.html" %}
+    </div>
+</div>
+{% endblock %}

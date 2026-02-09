@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}{{ device.name }} - MCP Network Diagnostics{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-title">{{ device.name }} ({{ device.id }})</div>
+    <p><strong>Type:</strong> {{ device.device_type }}</p>
+    <p><strong>Collector:</strong> {{ device.collector_type }}</p>
+    <p><strong>Last Seen:</strong> {{ device.last_seen.strftime('%Y-%m-%d %H:%M:%S') }}</p>
+</div>
+
+<div class="card">
+    <div class="card-title">Recent CPU Metrics</div>
+    {% if cpu_metrics %}
+    <table>
+        <thead>
+            <tr>
+                <th>Timestamp</th>
+                <th>Value</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for metric in cpu_metrics %}
+            <tr>
+                <td class="time">{{ metric.timestamp.strftime('%H:%M:%S') }}</td>
+                <td>{{ "%.2f"|format(metric.value) }}%</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p style="color: #8b949e;">No metrics available</p>
+    {% endif %}
+</div>
+
+<div class="card">
+    <div class="card-title">Recent Incidents</div>
+    {% if incidents %}
+    <table>
+        <thead>
+            <tr>
+                <th>Severity</th>
+                <th>Summary</th>
+                <th>Created</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for incident in incidents %}
+            <tr>
+                <td><span class="badge badge-{{ incident.severity }}">{{ incident.severity.upper() }}</span></td>
+                <td><a href="/incidents/{{ incident.id }}">{{ incident.summary }}</a></td>
+                <td class="time">{{ incident.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p style="color: #8b949e;">No incidents</p>
+    {% endif %}
+</div>
+{% endblock %}

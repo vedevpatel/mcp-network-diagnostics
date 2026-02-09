@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - MCP Network Diagnostics{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-title">API Keys</div>
+    <p style="color: #8b949e; margin-bottom: 16px;">Manage API keys for MCP access</p>
+    <p>{{ api_keys|length }} keys configured</p>
+</div>
+
+<div class="card">
+    <div class="card-title">Notification Channels</div>
+    <p style="color: #8b949e; margin-bottom: 16px;">Configure alert destinations</p>
+    <p>{{ notification_channels|length }} channels configured</p>
+</div>
+{% endblock %}

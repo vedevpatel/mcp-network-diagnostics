@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+
+{% block title %}Error - MCP Network Diagnostics{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-title">Error</div>
+    <p style="color: #da3633;">{{ error }}</p>
+    <p style="margin-top: 16px;"><a href="/" class="btn">Back to Home</a></p>
+</div>
+{% endblock %}

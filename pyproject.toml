@@ -13,6 +13,9 @@ dependencies = [
     "netmiko>=4.0.0",
     "aiohttp>=3.9.0",
     "cryptography>=41.0.0",
+    "fastapi>=0.109.0",
+    "uvicorn[standard]>=0.27.0",
+    "jinja2>=3.1.0",
 ]
 
 [build-system]

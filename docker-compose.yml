@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  mcp-network:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - mcp-data:/data
+    environment:
+      - MCP_NETWORK_DATA_DIR=/data
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=info
+    restart: unless-stopped
+    networks:
+      - mcp-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+  # Optional: Add a reverse proxy for TLS termination
+  # nginx:
+  #   image: nginx:alpine
+  #   ports:
+  #     - "443:443"
+  #   volumes:
+  #     - ./nginx.conf:/etc/nginx/nginx.conf:ro
+  #     - ./certs:/etc/nginx/certs:ro
+  #   depends_on:
+  #     - mcp-network
+  #   networks:
+  #     - mcp-network
+
+volumes:
+  mcp-data:
+    driver: local
+
+networks:
+  mcp-network:
+    driver: bridge

@@ -52,8 +52,13 @@ class Database:
                 collector_type TEXT,
                 first_seen TIMESTAMP,
                 last_seen TIMESTAMP,
-                metadata TEXT
+                metadata TEXT,
+                tenant_id TEXT DEFAULT 'default'
             )
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_devices_tenant
+            ON devices(tenant_id)
         """)
 
         # Metrics table (time-series data)
@@ -64,6 +69,7 @@ class Database:
                 metric_name TEXT NOT NULL,
                 value REAL NOT NULL,
                 timestamp TIMESTAMP NOT NULL,
+                tenant_id TEXT DEFAULT 'default',
                 FOREIGN KEY (device_id) REFERENCES devices(id)
             )
         """)
@@ -74,6 +80,10 @@ class Database:
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_metrics_name_time
             ON metrics(metric_name, timestamp DESC)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_metrics_tenant
+            ON metrics(tenant_id, device_id, timestamp DESC)
         """)
 
         # Incidents table
@@ -87,12 +97,17 @@ class Database:
                 root_cause TEXT,
                 affected_devices TEXT,
                 causal_chain TEXT,
-                actions_taken TEXT
+                actions_taken TEXT,
+                tenant_id TEXT DEFAULT 'default'
             )
         """)
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_incidents_time
             ON incidents(created_at DESC)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_incidents_tenant
+            ON incidents(tenant_id, created_at DESC)
         """)
 
         # Intents table
@@ -105,8 +120,13 @@ class Database:
                 created_by TEXT,
                 active BOOLEAN NOT NULL DEFAULT 1,
                 last_checked TIMESTAMP,
-                last_violated TIMESTAMP
+                last_violated TIMESTAMP,
+                tenant_id TEXT DEFAULT 'default'
             )
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_intents_tenant
+            ON intents(tenant_id)
         """)
 
         # Config snapshots table
@@ -117,12 +137,17 @@ class Database:
                 config_hash TEXT NOT NULL,
                 config_text TEXT NOT NULL,
                 captured_at TIMESTAMP NOT NULL,
+                tenant_id TEXT DEFAULT 'default',
                 FOREIGN KEY (device_id) REFERENCES devices(id)
             )
         """)
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_config_device_time
             ON config_snapshots(device_id, captured_at DESC)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_config_tenant
+            ON config_snapshots(tenant_id, device_id, captured_at DESC)
         """)
 
         # Audit events table
