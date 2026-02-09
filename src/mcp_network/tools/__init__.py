@@ -2335,3 +2335,220 @@ async def get_guardrail_status() -> str:
         "guardrails": status,
         "message": "Guardrails protect against excessive alerts and actions",
     }, indent=2)
+
+
+# ============================================================================
+# Security: API Key Management Tools
+# ============================================================================
+
+# Module-level auth manager
+_auth_manager = None
+
+
+def _get_auth_manager():
+    """Get or create auth manager singleton."""
+    global _auth_manager
+    if _auth_manager is None:
+        from pathlib import Path
+        from mcp_network.security import AuthManager
+        keys_file = str(Path.home() / ".mcp_network" / "api_keys.json")
+        _auth_manager = AuthManager(keys_file)
+    return _auth_manager
+
+
+@mcp.tool()
+async def create_api_key(
+    role: str,
+    description: str,
+    expires_days: int = None,
+    device_restrictions: str = None,
+    rate_limit: int = None,
+) -> str:
+    """
+    Create a new API key for authenticated access.
+
+    API keys enable secure access to network diagnostics tools with role-based
+    permissions. Keys are only shown once - store them securely.
+
+    Roles (hierarchical):
+    - consumer: Edge diagnostics only (check_my_connection, why_is_it_slow, etc.)
+    - operator: + Device access (read-only commands like "show")
+    - admin: + Agent control (start_agent, set_intent)
+    - superuser: + Write commands and credential management
+
+    Args:
+        role: Access level (consumer, operator, admin, superuser)
+        description: Purpose/owner of this key
+        expires_days: Optional expiration (default: never expires)
+        device_restrictions: Optional comma-separated device IDs (e.g., "R1,R2,R3")
+        rate_limit: Optional custom rate limit (requests/minute)
+
+    Returns:
+        JSON with new API key (ONLY SHOWN ONCE) and key details
+    """
+    from mcp_network.security import Role
+
+    auth_mgr = _get_auth_manager()
+
+    # Parse role
+    try:
+        role_enum = Role(role.lower())
+    except ValueError:
+        return json.dumps({
+            "error": f"Invalid role: {role}",
+            "valid_roles": ["consumer", "operator", "admin", "superuser"],
+        }, indent=2)
+
+    # Parse device restrictions
+    device_list = None
+    if device_restrictions:
+        device_list = [d.strip() for d in device_restrictions.split(",") if d.strip()]
+
+    # Generate key
+    try:
+        key_str, api_key = auth_mgr.generate_key(
+            role=role_enum,
+            description=description,
+            expires_days=expires_days,
+            device_restrictions=device_list,
+            rate_limit=rate_limit,
+        )
+    except Exception as e:
+        return json.dumps({
+            "error": f"Key generation failed: {e}",
+        }, indent=2)
+
+    return json.dumps({
+        "status": "created",
+        "api_key": key_str,
+        "key_details": {
+            "key_id": api_key.key_id,
+            "role": api_key.role.value,
+            "description": api_key.description,
+            "rate_limit": api_key.rate_limit,
+            "expires_at": api_key.expires_at.isoformat() if api_key.expires_at else None,
+            "device_restrictions": api_key.device_restrictions,
+        },
+        "warning": "SAVE THIS KEY NOW - it will not be shown again!",
+        "usage": f"Authorization: Bearer {key_str}",
+    }, indent=2)
+
+
+@mcp.tool()
+async def list_api_keys() -> str:
+    """
+    List all API keys with their status.
+
+    Shows key metadata without exposing the actual keys.
+
+    Returns:
+        JSON with list of all keys and their details
+    """
+    auth_mgr = _get_auth_manager()
+    keys = auth_mgr.list_keys()
+
+    key_list = []
+    for api_key in keys:
+        key_list.append({
+            "key_id": api_key.key_id,
+            "role": api_key.role.value,
+            "description": api_key.description,
+            "rate_limit": api_key.rate_limit,
+            "created_at": api_key.created_at.isoformat(),
+            "expires_at": api_key.expires_at.isoformat() if api_key.expires_at else "never",
+            "device_restrictions": api_key.device_restrictions or "all",
+            "revoked": api_key.revoked,
+        })
+
+    return json.dumps({
+        "keys": key_list,
+        "total": len(key_list),
+        "active": sum(1 for k in key_list if not k["revoked"]),
+        "revoked": sum(1 for k in key_list if k["revoked"]),
+    }, indent=2)
+
+
+@mcp.tool()
+async def revoke_api_key(key_id: str) -> str:
+    """
+    Revoke an API key to prevent further use.
+
+    Revoked keys cannot be un-revoked. Create a new key if needed.
+
+    Args:
+        key_id: The key ID to revoke (from list_api_keys)
+
+    Returns:
+        JSON with revocation status
+    """
+    auth_mgr = _get_auth_manager()
+
+    success = auth_mgr.revoke_key(key_id)
+
+    if success:
+        return json.dumps({
+            "status": "revoked",
+            "key_id": key_id,
+            "message": "Key has been revoked and can no longer be used",
+        }, indent=2)
+    else:
+        return json.dumps({
+            "status": "not_found",
+            "key_id": key_id,
+            "message": "Key not found or already revoked",
+        }, indent=2)
+
+
+@mcp.tool()
+async def rotate_api_key(key_id: str) -> str:
+    """
+    Rotate an API key by revoking it and creating a new one with the same permissions.
+
+    Useful for periodic key rotation security policy.
+
+    Args:
+        key_id: The key ID to rotate (from list_api_keys)
+
+    Returns:
+        JSON with new key (ONLY SHOWN ONCE)
+    """
+    auth_mgr = _get_auth_manager()
+
+    # Get old key details
+    old_key = next((k for k in auth_mgr.list_keys() if k.key_id == key_id), None)
+    if not old_key:
+        return json.dumps({
+            "error": f"Key {key_id} not found",
+        }, indent=2)
+
+    if old_key.revoked:
+        return json.dumps({
+            "error": f"Key {key_id} is already revoked",
+        }, indent=2)
+
+    # Revoke old key
+    auth_mgr.revoke_key(key_id)
+
+    # Create new key with same permissions
+    try:
+        key_str, new_key = auth_mgr.generate_key(
+            role=old_key.role,
+            description=f"{old_key.description} (rotated)",
+            expires_days=(old_key.expires_at - datetime.now(timezone.utc)).days if old_key.expires_at else None,
+            device_restrictions=old_key.device_restrictions,
+            rate_limit=old_key.rate_limit,
+        )
+    except Exception as e:
+        return json.dumps({
+            "error": f"Key rotation failed: {e}",
+            "note": f"Old key {key_id} was revoked but new key creation failed",
+        }, indent=2)
+
+    return json.dumps({
+        "status": "rotated",
+        "old_key_id": key_id,
+        "new_key_id": new_key.key_id,
+        "api_key": key_str,
+        "warning": "SAVE THIS KEY NOW - it will not be shown again!",
+        "usage": f"Authorization: Bearer {key_str}",
+    }, indent=2)
