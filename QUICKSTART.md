@@ -16,37 +16,64 @@ uv pip install -e .
 pip install -e .
 ```
 
-## Option 1: Demo with Simulated Network (Fastest)
+## Option 1: Web Dashboard with Docker (Fastest)
 
-Perfect for understanding the tools without any hardware.
+The easiest way to explore the system visually:
 
 ```bash
-# Start the server
-mcp-network --collector simulated
+# Build and start the dashboard
+docker compose up -d
 
-# In another terminal, test it
-python -c "
-import asyncio
-from mcp_network.tools import detect_anomalies, explain_incident
+# Access the web dashboard
+open http://localhost:8080
 
-async def demo():
-    # Generate some data
-    for _ in range(15):
-        print(await detect_anomalies())
+# View logs
+docker compose logs -f
 
-    # Run incident analysis
-    print(await explain_incident())
-
-asyncio.run(demo())
-"
+# Stop the service
+docker compose down
 ```
 
-The simulated network includes:
+The dashboard includes:
+- **Overview**: Network health, active incidents, device status
+- **Devices**: Real-time metrics for all monitored devices
+- **Incidents**: Active and resolved network incidents
+- **Intents**: Configured monitoring policies
+- **Settings**: System configuration
+
+The simulated network automatically includes:
 - 10 routers in a mesh topology
 - Injected anomalies (R2 CPU spike, R5 errors, R7 volatility)
 - Config changes (R3 logging change at iteration 10)
 
-## Option 2: DevNet Always-On Sandbox (Real Cisco Device)
+## Option 2: MCP Server for Claude Desktop
+
+Use the network diagnostics tools directly in Claude Desktop:
+
+```bash
+# Start the MCP server
+uv run mcp-network --collector simulated
+```
+
+Then configure Claude Desktop (see below for config details).
+
+## Option 3: Local Development / Testing
+
+Run the dashboard or MCP server locally:
+
+```bash
+# Install dependencies
+uv pip install -e .
+
+# Run the web dashboard
+uv run python -m mcp_network.dashboard
+# Access at http://localhost:8080
+
+# OR run the MCP server
+uv run mcp-network --collector simulated
+```
+
+## Option 4: DevNet Always-On Sandbox (Real Cisco Device)
 
 Test against a real Cisco IOS XE device without any setup.
 
@@ -58,7 +85,7 @@ mcp-network --collector ssh --topology-file examples/devnet_always_on.yaml
 # Credentials are pre-configured in the example file
 ```
 
-### Configure Claude Desktop
+## Configure Claude Desktop
 
 Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
