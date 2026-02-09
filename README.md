@@ -338,3 +338,8 @@ Built with:
 - [MCP SDK](https://github.com/anthropics/python-sdk) - Model Context Protocol
 - [Netmiko](https://github.com/ktbyers/netmiko) - Multi-vendor SSH
 - [TextFSM](https://github.com/google/textfsm) - Cisco output parsing
+
+
+<img width="667" height="739" alt="Screenshot 2026-02-08 at 8 20 20 PM" src="https://github.com/user-attachments/assets/d6c4a4d5-0057-4779-ad73-17d8f04a27d6" />
+
+<img width="559" height="626" alt="Screenshot 2026-02-08 at 8 23 10 PM" src="https://github.com/user-attachments/assets/3242478c-4f57-4d74-aea0-4706e2c4b62d" />
