@@ -27,31 +27,42 @@ Diagnose your home/office network without device access:
 
 ## Quick Start
 
-### Consumer Mode (No Setup Required)
+### Installation
 
 ```bash
-pip install mcp-network-diagnostics
-mcp-network  # Defaults to consumer mode
+# Install from source
+git clone https://github.com/vedevpatel/mcp-network-diagnostics.git
+cd mcp-network-diagnostics
+uv sync
 ```
 
-**Claude Desktop:**
+### Consumer Mode (No Setup Required)
+
+**Claude Desktop Config** (`~/Library/Application Support/Claude/claude_desktop_config.json`):
 ```json
 {
   "mcpServers": {
     "network-diagnostics": {
-      "command": "mcp-network"
+      "command": "/path/to/uv",
+      "args": [
+        "--directory",
+        "/path/to/mcp-network-diagnostics",
+        "run",
+        "mcp-network"
+      ]
     }
   }
 }
 ```
 
-**Try these:**
+**Restart Claude Desktop**, then try:
 - `check_my_connection()` - Full network health check
 - `why_is_it_slow("zoom.us")` - Diagnose latency to a target
 - `trace_path("8.8.8.8")` - Traceroute with AS info
 - `record_baseline()` - Start tracking normal behavior
 - `compare_to_baseline()` - Detect anomalies vs baseline
 - `set_intent("Zoom calls should never lag")` - Start monitoring
+- `plan_goal("Keep Zoom responsive during work hours")` - Generate action plan
 
 ### Operator Mode - Simulated (Testing)
 
