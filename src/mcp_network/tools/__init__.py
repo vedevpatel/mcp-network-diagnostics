@@ -5,7 +5,7 @@ Network diagnostic MCP tools
 import asyncio
 import json
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from mcp_network.app import mcp
 from mcp_network.collectors import get_network
 from mcp_network.graph.pathfinder import find_path, get_path_details, calculate_total_latency, find_alternate_paths
@@ -2552,3 +2552,520 @@ async def rotate_api_key(key_id: str) -> str:
         "warning": "SAVE THIS KEY NOW - it will not be shown again!",
         "usage": f"Authorization: Bearer {key_str}",
     }, indent=2)
+
+
+# ============================================================================
+# Persistent Storage: Historical Query Tools
+# ============================================================================
+
+@mcp.tool()
+async def query_metrics_history(
+    device_id: str,
+    metric: str,
+    hours: int = 24,
+    limit: int = 1000,
+) -> str:
+    """
+    Query historical metrics for a device from persistent storage.
+
+    Retrieves time-series data stored in the database. Much longer history
+    available than in-memory ring buffers.
+
+    Args:
+        device_id: Device ID to query
+        metric: Metric name (cpu, memory, interface_utilization, etc.)
+        hours: Hours of history to retrieve (default 24)
+        limit: Maximum number of data points (default 1000)
+
+    Returns:
+        JSON with historical metrics and statistics
+    """
+    from mcp_network.storage import get_database, MetricRepository
+
+    db = get_database()
+    repo = MetricRepository(db)
+
+    end_time = datetime.now(timezone.utc)
+    start_time = end_time - timedelta(hours=hours)
+
+    metrics = repo.query(device_id, metric, start_time, end_time, limit)
+
+    if not metrics:
+        return json.dumps({
+            "device_id": device_id,
+            "metric": metric,
+            "data_points": 0,
+            "message": "No historical data found for this metric",
+        }, indent=2)
+
+    # Calculate statistics
+    values = [m.value for m in metrics]
+    avg_value = sum(values) / len(values)
+    min_value = min(values)
+    max_value = max(values)
+
+    return json.dumps({
+        "device_id": device_id,
+        "metric": metric,
+        "time_range": {
+            "start": start_time.isoformat(),
+            "end": end_time.isoformat(),
+            "hours": hours,
+        },
+        "statistics": {
+            "data_points": len(metrics),
+            "average": round(avg_value, 2),
+            "min": round(min_value, 2),
+            "max": round(max_value, 2),
+        },
+        "recent_samples": [
+            {
+                "timestamp": m.timestamp.isoformat(),
+                "value": round(m.value, 2),
+            }
+            for m in metrics[:20]  # Most recent 20
+        ],
+    }, indent=2)
+
+
+@mcp.tool()
+async def get_incident_history(days: int = 7, limit: int = 50) -> str:
+    """
+    Get incident history from persistent storage.
+
+    Shows all incidents (resolved and active) from the specified time period.
+
+    Args:
+        days: Days of history to retrieve (default 7)
+        limit: Maximum number of incidents (default 50)
+
+    Returns:
+        JSON with incident history
+    """
+    from mcp_network.storage import get_database, IncidentRepository
+
+    db = get_database()
+    repo = IncidentRepository(db)
+
+    incidents = repo.find_recent(days=days, limit=limit)
+
+    incident_list = []
+    for inc in incidents:
+        incident_list.append({
+            "id": inc.id,
+            "created_at": inc.created_at.isoformat(),
+            "resolved_at": inc.resolved_at.isoformat() if inc.resolved_at else None,
+            "severity": inc.severity,
+            "summary": inc.summary,
+            "root_cause": inc.root_cause,
+            "affected_devices": inc.affected_devices,
+            "duration_minutes": (
+                (inc.resolved_at - inc.created_at).total_seconds() / 60
+                if inc.resolved_at else None
+            ),
+        })
+
+    active_count = sum(1 for inc in incidents if not inc.resolved_at)
+    resolved_count = len(incidents) - active_count
+
+    return json.dumps({
+        "time_range_days": days,
+        "total_incidents": len(incidents),
+        "active": active_count,
+        "resolved": resolved_count,
+        "incidents": incident_list,
+    }, indent=2)
+
+
+@mcp.tool()
+async def search_config_changes(
+    device_id: str,
+    days: int = 30,
+) -> str:
+    """
+    Find configuration changes for a device from persistent storage.
+
+    Shows all times the config hash changed, indicating a configuration
+    modification. Useful for correlating config changes with incidents.
+
+    Args:
+        device_id: Device ID to search
+        days: Days of history to search (default 30)
+
+    Returns:
+        JSON with config change history
+    """
+    from mcp_network.storage import get_database, ConfigRepository
+
+    db = get_database()
+    repo = ConfigRepository(db)
+
+    changes = repo.find_changes(device_id, days=days)
+
+    change_list = []
+    for i, snapshot in enumerate(changes):
+        prev_snapshot = changes[i + 1] if i + 1 < len(changes) else None
+
+        change_list.append({
+            "captured_at": snapshot.captured_at.isoformat(),
+            "config_hash": snapshot.config_hash,
+            "previous_hash": prev_snapshot.config_hash if prev_snapshot else None,
+            "age_hours": (datetime.now(timezone.utc) - snapshot.captured_at).total_seconds() / 3600,
+        })
+
+    return json.dumps({
+        "device_id": device_id,
+        "time_range_days": days,
+        "changes_detected": len(changes),
+        "changes": change_list,
+    }, indent=2)
+
+
+@mcp.tool()
+async def get_device_timeline(
+    device_id: str,
+    hours: int = 24,
+) -> str:
+    """
+    Get complete timeline of events for a device.
+
+    Combines incidents, config changes, and metric anomalies into a
+    unified timeline. Useful for understanding what happened to a device.
+
+    Args:
+        device_id: Device ID
+        hours: Hours of history (default 24)
+
+    Returns:
+        JSON with unified event timeline
+    """
+    from mcp_network.storage import get_database, IncidentRepository, ConfigRepository
+
+    db = get_database()
+    incident_repo = IncidentRepository(db)
+    config_repo = ConfigRepository(db)
+
+    end_time = datetime.now(timezone.utc)
+    start_time = end_time - timedelta(hours=hours)
+
+    # Get incidents affecting this device
+    incidents = incident_repo.find_by_device(device_id, days=hours//24 + 1)
+    incidents = [inc for inc in incidents if inc.created_at >= start_time]
+
+    # Get config changes
+    changes = config_repo.find_by_time_range(device_id, start_time, end_time)
+
+    # Build unified timeline
+    events = []
+
+    for inc in incidents:
+        events.append({
+            "timestamp": inc.created_at.isoformat(),
+            "type": "incident",
+            "severity": inc.severity,
+            "summary": inc.summary,
+            "incident_id": inc.id,
+        })
+
+    for i, change in enumerate(changes):
+        if i > 0 and change.config_hash != changes[i-1].config_hash:
+            events.append({
+                "timestamp": change.captured_at.isoformat(),
+                "type": "config_change",
+                "hash": change.config_hash,
+            })
+
+    # Sort by timestamp
+    events.sort(key=lambda e: e["timestamp"], reverse=True)
+
+    return json.dumps({
+        "device_id": device_id,
+        "time_range": {
+            "start": start_time.isoformat(),
+            "end": end_time.isoformat(),
+            "hours": hours,
+        },
+        "event_count": len(events),
+        "events": events,
+    }, indent=2)
+
+
+# ============================================================================
+# Notifications: Alert Management Tools
+# ============================================================================
+
+# Module-level notification router
+_notification_router = None
+
+
+def _get_notification_router():
+    """Get or create notification router singleton."""
+    global _notification_router
+    if _notification_router is None:
+        from mcp_network.notifications import NotificationRouter
+        _notification_router = NotificationRouter()
+    return _notification_router
+
+
+@mcp.tool()
+async def add_notification_channel(
+    channel_type: str,
+    name: str,
+    config: str,
+) -> str:
+    """
+    Add a notification channel for alerts.
+
+    Supports multiple channel types with different configurations.
+
+    Channel types and configs:
+    - slack: {"webhook_url": "https://hooks.slack.com/..."}
+    - discord: {"webhook_url": "https://discord.com/api/webhooks/..."}
+    - email: {"smtp_host": "smtp.gmail.com", "smtp_port": 587,
+              "username": "user@domain.com", "password": "...",
+              "from_addr": "alerts@domain.com", "to_addrs": ["user@domain.com"]}
+    - webhook: {"url": "https://your-webhook.com/endpoint"}
+    - pagerduty: {"integration_key": "..."}
+
+    Args:
+        channel_type: Type of channel (slack, discord, email, webhook, pagerduty)
+        name: Unique name for this channel
+        config: JSON configuration for the channel
+
+    Returns:
+        JSON with channel status
+    """
+    from mcp_network.notifications import (
+        SlackChannel,
+        DiscordChannel,
+        EmailChannel,
+        WebhookChannel,
+        PagerDutyChannel,
+    )
+
+    router = _get_notification_router()
+
+    try:
+        config_dict = json.loads(config)
+    except json.JSONDecodeError as e:
+        return json.dumps({
+            "error": f"Invalid JSON config: {e}",
+        }, indent=2)
+
+    # Create channel based on type
+    try:
+        if channel_type == "slack":
+            channel = SlackChannel(**config_dict)
+        elif channel_type == "discord":
+            channel = DiscordChannel(**config_dict)
+        elif channel_type == "email":
+            channel = EmailChannel(**config_dict)
+        elif channel_type == "webhook":
+            channel = WebhookChannel(**config_dict)
+        elif channel_type == "pagerduty":
+            channel = PagerDutyChannel(**config_dict)
+        else:
+            return json.dumps({
+                "error": f"Unknown channel type: {channel_type}",
+                "valid_types": ["slack", "discord", "email", "webhook", "pagerduty"],
+            }, indent=2)
+
+        router.add_channel(name, channel)
+
+        return json.dumps({
+            "status": "added",
+            "channel_name": name,
+            "channel_type": channel_type,
+            "message": f"Channel '{name}' added successfully. Use test_notification_channel to verify.",
+        }, indent=2)
+
+    except Exception as e:
+        return json.dumps({
+            "error": f"Failed to create channel: {e}",
+        }, indent=2)
+
+
+@mcp.tool()
+async def test_notification_channel(name: str) -> str:
+    """
+    Send a test notification to verify channel works.
+
+    Args:
+        name: Channel name to test
+
+    Returns:
+        JSON with test result
+    """
+    from mcp_network.notifications import Notification
+
+    router = _get_notification_router()
+
+    channel = router.channels.get(name)
+    if not channel:
+        return json.dumps({
+            "error": f"Channel '{name}' not found",
+            "available_channels": list(router.channels.keys()),
+        }, indent=2)
+
+    # Send test notification
+    test_notification = Notification(
+        title="Test Notification",
+        summary="This is a test notification from MCP Network Diagnostics",
+        severity="info",
+        details={"test": "true", "timestamp": datetime.now(timezone.utc).isoformat()},
+        incident_id=None,
+        timestamp=time.time(),
+    )
+
+    try:
+        success = await channel.send(test_notification)
+
+        if success:
+            return json.dumps({
+                "status": "success",
+                "channel_name": name,
+                "message": "Test notification sent successfully",
+            }, indent=2)
+        else:
+            return json.dumps({
+                "status": "failed",
+                "channel_name": name,
+                "message": "Channel returned failure status",
+            }, indent=2)
+
+    except Exception as e:
+        return json.dumps({
+            "status": "error",
+            "channel_name": name,
+            "error": str(e),
+        }, indent=2)
+
+
+@mcp.tool()
+async def list_notification_channels() -> str:
+    """
+    List all configured notification channels.
+
+    Returns:
+        JSON with list of channels
+    """
+    router = _get_notification_router()
+
+    channels = []
+    for name, channel in router.channels.items():
+        channels.append({
+            "name": name,
+            "type": channel.__class__.__name__.replace("Channel", "").lower(),
+        })
+
+    return json.dumps({
+        "channels": channels,
+        "count": len(channels),
+    }, indent=2)
+
+
+@mcp.tool()
+async def set_notification_rules(rules_json: str) -> str:
+    """
+    Configure notification routing rules.
+
+    Rules determine which channels receive which types of alerts based on
+    severity, device, or event type.
+
+    Example rules:
+    [
+        {
+            "severity": ["critical"],
+            "channels": ["pagerduty", "slack-ops"]
+        },
+        {
+            "severity": ["warning"],
+            "channels": ["slack-ops"]
+        },
+        {
+            "severity": ["info"],
+            "devices": ["R1", "R2"],
+            "channels": ["slack-network"]
+        }
+    ]
+
+    Args:
+        rules_json: JSON array of routing rules
+
+    Returns:
+        JSON with rules status
+    """
+    from mcp_network.notifications import RoutingRule
+
+    router = _get_notification_router()
+
+    try:
+        rules_list = json.loads(rules_json)
+    except json.JSONDecodeError as e:
+        return json.dumps({
+            "error": f"Invalid JSON: {e}",
+        }, indent=2)
+
+    router.rules = []
+
+    for rule_dict in rules_list:
+        rule = RoutingRule(
+            severity=rule_dict.get("severity"),
+            event_types=rule_dict.get("event_types"),
+            devices=rule_dict.get("devices"),
+            channels=rule_dict["channels"],
+        )
+        router.add_rule(rule)
+
+    return json.dumps({
+        "status": "configured",
+        "rules_count": len(router.rules),
+        "message": "Notification routing rules updated",
+    }, indent=2)
+
+
+@mcp.tool()
+async def send_test_alert(
+    severity: str = "info",
+    message: str = "Manual test alert",
+) -> str:
+    """
+    Send a test alert through the notification system.
+
+    Useful for testing routing rules and verifying notifications work end-to-end.
+
+    Args:
+        severity: Alert severity (critical, warning, info)
+        message: Alert message
+
+    Returns:
+        JSON with send status
+    """
+    from mcp_network.notifications import Notification
+
+    router = _get_notification_router()
+
+    notification = Notification(
+        title=f"Test Alert ({severity})",
+        summary=message,
+        severity=severity,
+        details={"manual_test": True, "timestamp": datetime.now(timezone.utc).isoformat()},
+        incident_id=None,
+        timestamp=time.time(),
+    )
+
+    try:
+        await router.route(notification)
+
+        return json.dumps({
+            "status": "sent",
+            "severity": severity,
+            "message": message,
+            "routed_to": "channels matching rules",
+        }, indent=2)
+
+    except Exception as e:
+        return json.dumps({
+            "status": "error",
+            "error": str(e),
+        }, indent=2)
