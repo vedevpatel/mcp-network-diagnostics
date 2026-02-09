@@ -7,12 +7,13 @@ RUN pip install uv
 # Set working directory
 WORKDIR /app
 
-# Copy dependency files
+# Copy dependency files and source
 COPY pyproject.toml ./
 COPY README.md ./
+COPY src/ ./src/
 
-# Install dependencies
-RUN uv pip install --system -e .
+# Install package and dependencies
+RUN uv pip install --system .
 
 # Final stage
 FROM python:3.10-slim
@@ -47,5 +48,5 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD python -c "import sys; sys.exit(0)"
 
-# Default command: run MCP server
-CMD ["python", "-m", "mcp_network"]
+# Default command: run dashboard
+CMD ["python", "-m", "mcp_network.dashboard"]
