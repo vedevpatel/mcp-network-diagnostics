@@ -2178,3 +2178,160 @@ async def agent_status() -> str:
             "alert_cooldown": _agent_instance.config.alert_cooldown,
         },
     }, indent=2)
+
+
+# ============================================================================
+# Autonomous Agent Tools (Leap 3)
+# ============================================================================
+
+# Module-level autonomous agent instance
+_autonomous_agent = None
+
+
+@mcp.tool()
+async def plan_goal(goal: str) -> str:
+    """
+    Generate an action plan for a natural language network goal.
+
+    The autonomous planner converts your high-level goal into concrete actions
+    with safety guardrails. This lets you see the plan before committing.
+
+    Examples:
+    - "Keep Zoom responsive during work hours"
+    - "Investigate whenever Netflix buffers"
+    - "Alert me if my connection degrades from baseline"
+    - "Ensure gaming never exceeds 50ms"
+
+    Args:
+        goal: Your network goal in plain English
+
+    Returns:
+        JSON with generated action plan, confidence, and explanation
+    """
+    from mcp_network.agent import AutonomousAgent
+    import hashlib
+
+    global _autonomous_agent
+
+    if not _autonomous_agent:
+        _autonomous_agent = AutonomousAgent()
+
+    # Generate intent ID
+    intent_id = hashlib.md5(goal.encode()).hexdigest()[:12]
+
+    # Generate plan
+    plan = await _autonomous_agent.set_goal(goal, intent_id)
+
+    return json.dumps({
+        "goal": goal,
+        "intent_id": intent_id,
+        "confidence": plan.confidence,
+        "explanation": plan.explanation,
+        "actions": [
+            {
+                "type": action.type,
+                "target": action.target,
+                "metric": action.metric,
+                "threshold": action.threshold,
+                "comparison": action.comparison,
+                "interval_seconds": action.interval_seconds,
+                "params": action.params,
+            }
+            for action in plan.actions
+        ],
+        "triggers": plan.triggers,
+        "guardrails": plan.guardrails,
+        "next_step": "Use execute_plan() to activate this plan",
+    }, indent=2)
+
+
+@mcp.tool()
+async def execute_plan(intent_id: str) -> str:
+    """
+    Execute a previously generated action plan.
+
+    This activates the plan and starts monitoring according to the actions.
+
+    Args:
+        intent_id: The intent ID from plan_goal()
+
+    Returns:
+        JSON with execution status
+    """
+    from mcp_network.agent import NetworkAgent, AgentConfig
+
+    global _autonomous_agent, _agent_instance
+
+    if not _autonomous_agent:
+        return json.dumps({
+            "status": "error",
+            "message": "No plans generated. Use plan_goal() first.",
+        }, indent=2)
+
+    plan = _autonomous_agent.get_plan(intent_id)
+    if not plan:
+        return json.dumps({
+            "status": "error",
+            "message": f"Plan {intent_id} not found. Use plan_goal() first.",
+        }, indent=2)
+
+    # Start agent if not running
+    if not _agent_instance or not _agent_instance.running:
+        _agent_instance = NetworkAgent(AgentConfig())
+        await _agent_instance.start()
+
+    # Convert plan to intent (simplified - just use first monitor action)
+    from mcp_network.agent import Intent
+    monitor_action = next((a for a in plan.actions if a.type == "monitor"), None)
+
+    if monitor_action:
+        intent = Intent(
+            id=intent_id,
+            name=plan.goal[:50],  # Truncate for display
+            target=monitor_action.target or "all",
+            metric=monitor_action.metric or "latency",
+            threshold=monitor_action.threshold or 100.0,
+            comparison=monitor_action.comparison or "<",
+            priority=5,
+            actions=[a.type for a in plan.actions if a.type in ["alert", "diagnose", "record"]],
+        )
+
+        _agent_instance.add_intent(intent)
+
+        return json.dumps({
+            "status": "executed",
+            "intent_id": intent_id,
+            "goal": plan.goal,
+            "monitoring": f"{intent.target} {intent.metric}",
+            "message": "Plan activated. Agent is now monitoring.",
+        }, indent=2)
+    else:
+        return json.dumps({
+            "status": "error",
+            "message": "Plan has no monitor action",
+        }, indent=2)
+
+
+@mcp.tool()
+async def get_guardrail_status() -> str:
+    """
+    Get current guardrail enforcement status.
+
+    Shows rate limits, cooldowns, and any disabled intents.
+
+    Returns:
+        JSON with guardrail state
+    """
+    global _autonomous_agent
+
+    if not _autonomous_agent:
+        return json.dumps({
+            "message": "Autonomous agent not initialized",
+        }, indent=2)
+
+    status = _autonomous_agent.get_guardrail_status()
+
+    return json.dumps({
+        "guardrails": status,
+        "message": "Guardrails protect against excessive alerts and actions",
+    }, indent=2)
