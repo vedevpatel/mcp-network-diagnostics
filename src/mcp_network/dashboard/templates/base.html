@@ -194,6 +194,7 @@
                 <a href="/devices" class="{% if '/devices' in request.url.path %}active{% endif %}">Devices</a>
                 <a href="/incidents" class="{% if '/incidents' in request.url.path %}active{% endif %}">Incidents</a>
                 <a href="/intents" class="{% if '/intents' in request.url.path %}active{% endif %}">Intents</a>
+                <a href="/developer" class="{% if '/developer' in request.url.path %}active{% endif %}">Developer</a>
                 <a href="/settings" class="{% if '/settings' in request.url.path %}active{% endif %}">Settings</a>
             </nav>
             <div id="system-status" class="system-status-wrap" hx-get="/partials/status" hx-trigger="load, every 15s" hx-swap="innerHTML">

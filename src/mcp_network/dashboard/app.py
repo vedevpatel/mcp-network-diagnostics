@@ -5,7 +5,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pathlib import Path
 
-from .routes import overview, devices, incidents, intents, settings, tools, status
+from .routes import overview, devices, incidents, intents, settings, tools, status, developer
 
 
 def create_app() -> FastAPI:
@@ -33,6 +33,7 @@ def create_app() -> FastAPI:
     app.include_router(settings.router, prefix="/settings", tags=["Settings"])
     app.include_router(tools.router, prefix="/tools", tags=["Tools"])
     app.include_router(status.router, tags=["Status"])
+    app.include_router(developer.router, prefix="/developer", tags=["Developer"])
 
     return app
 

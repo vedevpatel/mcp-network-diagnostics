@@ -3,9 +3,11 @@
 import html
 from pathlib import Path
 
-from fastapi import APIRouter, Request, Form
+from fastapi import APIRouter, Request, Form, Depends
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
+
+from mcp_network.dashboard.auth_deps import require_dashboard_auth
 
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
@@ -91,7 +93,7 @@ def _render_error_fragment(message: str) -> str:
 
 
 @router.get("/", response_class=HTMLResponse)
-async def tools_page(request: Request):
+async def tools_page(request: Request, _auth=Depends(require_dashboard_auth)):
     """Render the tools page with all tool buttons/forms."""
     by_category = {}
     for t in TOOL_DEFINITIONS:
@@ -109,7 +111,7 @@ async def tools_page(request: Request):
 
 
 @router.post("/invoke", response_class=HTMLResponse)
-async def invoke_tool(request: Request):
+async def invoke_tool(request: Request, _auth=Depends(require_dashboard_auth)):
     """Invoke a tool by id with form params; return HTML fragment for output."""
     form_dict = dict(await request.form())
     tool_id = form_dict.pop("tool_id", None)

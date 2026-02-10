@@ -38,7 +38,6 @@ def main():
     """
     Main entry point for the MCP server.
     """
-
     parser = argparse.ArgumentParser(description="MCP Network Diagnostics Server")
 
     parser.add_argument(
@@ -70,6 +69,49 @@ def main():
         help="Metric cache TTL in seconds (default: 30)"
     )
 
+    parser.add_argument(
+        "--transport",
+        type=str,
+        choices=["stdio", "streamable-http"],
+        default=os.getenv("MCP_NETWORK_TRANSPORT", "stdio"),
+        help="Transport: stdio (default, for Claude Desktop) or streamable-http (for remote API)"
+    )
+
+    parser.add_argument(
+        "--host",
+        type=str,
+        default=os.getenv("MCP_NETWORK_HTTP_HOST", "0.0.0.0"),
+        help="Bind host for streamable-http (default: 0.0.0.0)"
+    )
+
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=int(os.getenv("MCP_NETWORK_HTTP_PORT", "8000")),
+        help="Port for streamable-http (default: 8000)"
+    )
+
+    parser.add_argument(
+        "--path",
+        type=str,
+        default=os.getenv("MCP_NETWORK_HTTP_PATH", "/mcp"),
+        help="URL path for streamable-http (default: /mcp)"
+    )
+
+    parser.add_argument(
+        "--require-auth",
+        action="store_true",
+        default=os.getenv("MCP_NETWORK_REQUIRE_AUTH", "").lower() in ("1", "true", "yes"),
+        help="Require API key for HTTP transport (env: MCP_NETWORK_REQUIRE_AUTH)"
+    )
+
+    parser.add_argument(
+        "--api-keys-file",
+        type=str,
+        default=os.getenv("MCP_NETWORK_API_KEYS_FILE", ""),
+        help="Path to API keys JSON (default: ~/.mcp_network/api_keys.json)"
+    )
+
     args = parser.parse_args()
 
     # Re-configure collector with CLI args (overrides env vars)
@@ -80,8 +122,19 @@ def main():
         cache_ttl=args.cache_ttl
     )
 
-    logger.info(f"Starting MCP Network Diagnostics Server with {args.collector} collector")
-    mcp.run(transport="stdio")
+    if args.transport == "stdio":
+        logger.info(f"Starting MCP Network Diagnostics Server with {args.collector} collector (stdio)")
+        mcp.run(transport="stdio")
+    else:
+        # streamable-http: run with optional auth and rate limiting
+        from mcp_network.server_http import run_http
+        run_http(
+            host=args.host,
+            port=args.port,
+            path=args.path,
+            require_auth=args.require_auth,
+            api_keys_file=args.api_keys_file or None,
+        )
 
 
 if __name__ == "__main__":

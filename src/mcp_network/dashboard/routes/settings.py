@@ -1,10 +1,12 @@
 """Settings dashboard routes."""
 
-from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
 from pathlib import Path
 
+from fastapi import APIRouter, Request, Depends
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
+
+from mcp_network.dashboard.auth_deps import require_dashboard_auth
 from mcp_network.security import AuthManager
 from mcp_network.notifications import NotificationRouter
 
@@ -13,7 +15,7 @@ templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templa
 
 
 @router.get("/", response_class=HTMLResponse)
-async def settings_page(request: Request):
+async def settings_page(request: Request, _auth=Depends(require_dashboard_auth)):
     """Show settings page."""
     # Get API keys
     auth_mgr = AuthManager()
