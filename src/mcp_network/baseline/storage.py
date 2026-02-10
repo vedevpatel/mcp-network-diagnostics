@@ -11,7 +11,7 @@ import os
 import time
 from dataclasses import dataclass, asdict
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 from statistics import mean, stdev
 
 
@@ -62,6 +62,34 @@ class BaselineStorage:
         self.max_snapshots = 100  # Keep last 100 measurements
 
         self._load()
+
+    def record_snapshot(self, data: dict[str, Any]) -> None:
+        """Record a baseline snapshot from a metrics dict (e.g. from agent probe).
+
+        Accepts dict keys: ping_avg_ms, ping_loss_pct, dns_time_ms (or
+        gateway_latency_ms, gateway_loss_pct, dns_resolution_ms).
+        Missing required fields use 0.0; timestamp is set to now.
+        """
+        gateway_latency_ms = float(
+            data.get("gateway_latency_ms", data.get("ping_avg_ms", 0.0))
+        )
+        gateway_loss_pct = float(
+            data.get("gateway_loss_pct", data.get("ping_loss_pct", 0.0))
+        )
+        dns_resolution_ms = float(
+            data.get("dns_resolution_ms", data.get("dns_time_ms", 0.0))
+        )
+        snapshot = BaselineSnapshot(
+            timestamp=time.time(),
+            gateway_latency_ms=gateway_latency_ms,
+            gateway_loss_pct=gateway_loss_pct,
+            dns_resolution_ms=dns_resolution_ms,
+            external_latency_ms=float(data.get("external_latency_ms", 0.0)),
+            external_loss_pct=float(data.get("external_loss_pct", 0.0)),
+            wifi_signal_dbm=data.get("wifi_signal_dbm"),
+            wifi_quality=data.get("wifi_quality"),
+        )
+        self.add_snapshot(snapshot)
 
     def add_snapshot(self, snapshot: BaselineSnapshot) -> None:
         """Add a baseline snapshot.

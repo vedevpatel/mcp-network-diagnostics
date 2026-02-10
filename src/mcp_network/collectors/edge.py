@@ -297,14 +297,37 @@ class EdgeCollector:
             stdout, _ = await proc.communicate()
             output = stdout.decode()
 
-            # Parse airport output
+            # Parse airport output (keys may have leading/trailing spaces)
             data = {}
             for line in output.split("\n"):
                 if ":" in line:
                     key, value = line.strip().split(":", 1)
                     data[key.strip()] = value.strip()
 
-            ssid = data.get("SSID")
+            # SSID: try exact keys first, then any key that normalizes to "ssid"
+            ssid = data.get("SSID") or data.get(" SSID")
+            if not ssid:
+                for k, v in data.items():
+                    if k.strip().lower() == "ssid" and isinstance(v, str) and v.strip():
+                        ssid = v.strip()
+                        break
+            if not ssid:
+                # Scan raw lines (handles odd spacing/encoding in airport -I)
+                for line in output.split("\n"):
+                    if "SSID" in line and ":" in line:
+                        after = line.split(":", 1)[1].strip()
+                        if after and after.lower() not in ("n/a", "unknown", "none"):
+                            ssid = after
+                            break
+            if isinstance(ssid, str):
+                ssid = ssid.strip() or None
+            else:
+                ssid = None
+
+            # If airport didn't report SSID, try networksetup + ipconfig (e.g. permission or newer macOS)
+            if not ssid:
+                ssid = await self._get_ssid_networksetup_macos()
+
             signal = int(data.get("agrCtlRSSI", "0"))
             noise = int(data.get("agrCtlNoise", "0"))
             channel = int(data.get("channel", "0"))
@@ -329,6 +352,75 @@ class EdgeCollector:
 
         except Exception:
             return None
+
+    async def _get_wifi_interface_macos(self) -> list[str]:
+        """Discover Wi-Fi interface name(s) via networksetup -listallhardwareports."""
+        interfaces = []
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "/usr/sbin/networksetup", "-listallhardwareports",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await proc.communicate()
+            if proc.returncode != 0:
+                return ["en0", "en1"]  # fallback order
+            lines = stdout.decode().split("\n")
+            current_port = None
+            for line in lines:
+                if "Hardware Port:" in line:
+                    port = line.split("Hardware Port:")[1].strip().lower()
+                    current_port = "wi-fi" in port or "wifi" in port or "airport" in port
+                elif current_port and "Device:" in line:
+                    device = line.split("Device:")[1].strip()
+                    if device:
+                        interfaces.append(device)
+                    current_port = False
+            if interfaces:
+                return interfaces
+        except Exception:
+            pass
+        return ["en0", "en1"]
+
+    async def _get_ssid_networksetup_macos(self) -> Optional[str]:
+        """Fallback: get current WiFi SSID via networksetup or ipconfig (works when airport -I omits SSID)."""
+        interfaces = await self._get_wifi_interface_macos()
+        for interface in interfaces:
+            # 1) networksetup (full path so it works when PATH is minimal under uv/launchd)
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    "/usr/sbin/networksetup", "-getairportnetwork", interface,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, _ = await proc.communicate()
+                if proc.returncode == 0:
+                    line = stdout.decode().strip()
+                    if "Current " in line and " Network:" in line and ":" in line:
+                        ssid = line.split(":", 1)[1].strip()
+                        if ssid and "not associated" not in ssid.lower():
+                            return ssid
+            except Exception:
+                pass
+
+            # 2) ipconfig getsummary (reliable when networksetup fails; use full path for uv/restricted PATH)
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    "/usr/sbin/ipconfig", "getsummary", interface,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, _ = await proc.communicate()
+                if proc.returncode == 0:
+                    for line in stdout.decode().split("\n"):
+                        if "SSID" in line and "redact" not in line.lower():
+                            # " SSID : UCI-WIFI" or "SSID: UCI-WIFI"
+                            after = line.split(":", 1)[1].strip() if ":" in line else line.split("SSID", 1)[-1].strip()
+                            if after and after.lower() not in ("n/a", "unknown", "none", "<redacted>"):
+                                return after
+            except Exception:
+                pass
+        return None
 
     async def _get_wifi_stats_linux(self) -> Optional[WifiResult]:
         """Get WiFi stats on Linux using iw or iwconfig."""
@@ -378,7 +470,15 @@ class EdgeCollector:
 
                 for line in link_output.split("\n"):
                     if "SSID:" in line:
-                        ssid = line.split("SSID:")[1].strip()
+                        raw_ssid = line.split("SSID:")[1].strip()
+                        if raw_ssid and raw_ssid != "off/any":
+                            ssid = raw_ssid
+
+                # If iw didn't report SSID, try nmcli (NetworkManager) as fallback
+                if not ssid and await self._command_exists("nmcli"):
+                    nmcli_ssid = await self._get_ssid_nmcli_linux()
+                    if nmcli_ssid:
+                        ssid = nmcli_ssid
 
                 for line in station_output.split("\n"):
                     if "signal:" in line:
@@ -427,7 +527,9 @@ class EdgeCollector:
                         # Format: ESSID:"NetworkName"
                         parts = line.split("ESSID:")
                         if len(parts) > 1:
-                            ssid = parts[1].strip().strip('"')
+                            raw = parts[1].strip().strip('"')
+                            if raw and raw != "off/any":
+                                ssid = raw
 
                     if "Signal level=" in line:
                         # Format: Signal level=-52 dBm
@@ -525,6 +627,26 @@ class EdgeCollector:
         except Exception:
             pass
 
+        return None
+
+    async def _get_ssid_nmcli_linux(self) -> Optional[str]:
+        """Get active WiFi SSID via NetworkManager (nmcli). Used as fallback when iw/iwconfig don't report SSID."""
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "nmcli", "-t", "-f", "active,ssid", "dev", "wifi",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await proc.communicate()
+            if proc.returncode != 0:
+                return None
+            for line in stdout.decode().strip().split("\n"):
+                # Format: yes:MyNetworkName or no:OtherNetwork
+                if line.startswith("yes:"):
+                    ssid = line.split(":", 1)[1].strip()
+                    return ssid if ssid else None
+        except Exception:
+            pass
         return None
 
     def _get_default_gateway(self) -> Optional[str]:

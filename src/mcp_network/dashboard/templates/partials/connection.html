@@ -46,19 +46,27 @@
         {% if layers.wifi.available %}
         <div class="card-main">
             <span class="card-value">
-                {{ layers.wifi.ssid or "Unknown network" }}
+                {% if layers.wifi.ssid %}
+                    {{ layers.wifi.ssid }}
+                {% else %}
+                    Network name unavailable
+                {% endif %}
             </span>
             <span class="badge badge-soft">
                 {{ layers.wifi.quality|capitalize }}
             </span>
         </div>
         <div class="card-sub">
-            Signal:
+            {% if not layers.wifi.ssid %}
+                <span class="card-sub-hint">SSID not reported (e.g. in Docker). Run the dashboard on your Mac to see your WiFi name.</span>
+            {% endif %}
+            <span class="card-sub-signal">Signal:
             {% if layers.wifi.signal_strength_dbm is not none %}
                 {{ layers.wifi.signal_strength_dbm }} dBm
             {% else %}
                 n/a
             {% endif %}
+            </span>
         </div>
         {% else %}
         <div class="card-main">

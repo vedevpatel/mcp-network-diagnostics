@@ -12,9 +12,13 @@
         <h3 class="tools-category-title">{{ cat.label }}</h3>
         <div class="tools-grid">
             {% for tool in cat.tools %}
-            <div class="tool-card">
+            <div id="tool-card-{{ tool.id }}" class="tool-card">
                 <div class="tool-card-header">
                     <span class="tool-label">{{ tool.label }}</span>
+                    <span id="spinner-{{ tool.id }}" class="tool-running-badge htmx-indicator" aria-live="polite" aria-hidden="true">
+                        <span class="tool-running-spinner" aria-hidden="true"></span>
+                        <span class="tool-running-text">Running…</span>
+                    </span>
                     <p class="tool-desc">{{ tool.description }}</p>
                 </div>
                 <form
@@ -22,7 +26,7 @@
                     hx-post="/tools/invoke"
                     hx-target="#result-{{ tool.id }}"
                     hx-swap="innerHTML"
-                    hx-indicator="#spinner-{{ tool.id }}"
+                    hx-indicator="#tool-card-{{ tool.id }}, #spinner-{{ tool.id }}"
                 >
                     <input type="hidden" name="tool_id" value="{{ tool.id }}">
                     {% for param in tool.params %}
@@ -40,7 +44,10 @@
                     <div class="tool-form-actions">
                         <button type="submit" class="btn btn-run">
                             <span class="btn-run-text">Run</span>
-                            <span id="spinner-{{ tool.id }}" class="htmx-indicator tool-spinner" aria-hidden="true">…</span>
+                            <span class="btn-run-loading htmx-indicator">
+                                <span class="btn-run-spinner" aria-hidden="true"></span>
+                                <span>Running…</span>
+                            </span>
                         </button>
                     </div>
                 </form>
