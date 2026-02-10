@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}MCP Network Diagnostics{% endblock %}</title>
+    <link rel="stylesheet" href="/static/style.css">
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -189,11 +190,15 @@
             <nav>
                 <h1>🌐 MCP Network Diagnostics</h1>
                 <a href="/" class="{% if request.url.path == '/' %}active{% endif %}">Overview</a>
+                <a href="/tools" class="{% if '/tools' in request.url.path %}active{% endif %}">Tools</a>
                 <a href="/devices" class="{% if '/devices' in request.url.path %}active{% endif %}">Devices</a>
                 <a href="/incidents" class="{% if '/incidents' in request.url.path %}active{% endif %}">Incidents</a>
                 <a href="/intents" class="{% if '/intents' in request.url.path %}active{% endif %}">Intents</a>
                 <a href="/settings" class="{% if '/settings' in request.url.path %}active{% endif %}">Settings</a>
             </nav>
+            <div id="system-status" class="system-status-wrap" hx-get="/partials/status" hx-trigger="load, every 15s" hx-swap="innerHTML">
+                <div class="system-status-bar" role="status"><span class="system-status-value">Loading…</span></div>
+            </div>
         </div>
     </header>
 

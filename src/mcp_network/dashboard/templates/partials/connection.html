@@ -1,0 +1,119 @@
+{% set layers = connection.layers %}
+
+{% if not layers.wifi.available or layers.local_network.gateway_ip == "unknown" %}
+<div class="connection-context-note" role="note">
+    <strong>Seeing "Not on WiFi" or "unknown" gateway?</strong>
+    This view is from the machine running the dashboard. If that’s inside Docker, it can’t see your Mac’s WiFi or home router. To see <em>your</em> connection (SSID, gateway, etc.), run the dashboard on your Mac: <code>uv run python -m mcp_network.dashboard</code> then open <code>http://localhost:8080</code>.
+</div>
+{% endif %}
+
+<div class="connection-header">
+    <div>
+        <div class="connection-title">My Connection</div>
+        <div class="connection-subtitle">
+            Overall status:
+            <span class="status-pill status-pill-{{ connection.overall_status }}">
+                {{ connection.overall_status|capitalize }}
+            </span>
+        </div>
+    </div>
+    <div class="connection-meta">
+        <span class="dot dot-live"></span>
+        Live · Updated
+        {{ connection.timestamp[:19].replace("T", " ") }}
+    </div>
+</div>
+
+{% if connection.issues %}
+<div class="issues-card">
+    <div class="issues-title">Detected issues</div>
+    <ul>
+        {% for issue in connection.issues %}
+        <li>{{ issue }}</li>
+        {% endfor %}
+    </ul>
+</div>
+{% else %}
+<div class="issues-card issues-card-healthy">
+    <div class="issues-title">No issues detected</div>
+    <p>Your connection looks healthy right now.</p>
+    </div>
+{% endif %}
+
+<div class="connection-grid">
+    <div class="connection-card">
+        <div class="card-label">WiFi</div>
+        {% if layers.wifi.available %}
+        <div class="card-main">
+            <span class="card-value">
+                {{ layers.wifi.ssid or "Unknown network" }}
+            </span>
+            <span class="badge badge-soft">
+                {{ layers.wifi.quality|capitalize }}
+            </span>
+        </div>
+        <div class="card-sub">
+            Signal:
+            {% if layers.wifi.signal_strength_dbm is not none %}
+                {{ layers.wifi.signal_strength_dbm }} dBm
+            {% else %}
+                n/a
+            {% endif %}
+        </div>
+        {% else %}
+        <div class="card-main">
+            <span class="card-value">Not on WiFi</span>
+        </div>
+        <div class="card-sub">Using wired or unknown interface.</div>
+        {% endif %}
+    </div>
+
+    <div class="connection-card">
+        <div class="card-label">Local Network</div>
+        <div class="card-main">
+            <span class="card-value">
+                {{ layers.local_network.gateway_ip }}
+            </span>
+            <span class="badge badge-{{ layers.local_network.status }}">
+                {{ layers.local_network.status|capitalize }}
+            </span>
+        </div>
+        <div class="card-sub">
+            {{ layers.local_network.latency_ms }} ms ·
+            {{ layers.local_network.loss_pct }}% loss
+        </div>
+    </div>
+
+    <div class="connection-card">
+        <div class="card-label">DNS</div>
+        <div class="card-main">
+            <span class="card-value">
+                {% if layers.dns.google_ms == "failed" and layers.dns.cloudflare_ms == "failed" %}
+                    Failing
+                {% else %}
+                    {{ layers.dns.google_ms }} /
+                    {{ layers.dns.cloudflare_ms }} ms
+                {% endif %}
+            </span>
+        </div>
+        <div class="card-sub">
+            Google / Cloudflare resolution time
+        </div>
+    </div>
+
+    <div class="connection-card">
+        <div class="card-label">Internet</div>
+        <div class="card-main">
+            <span class="card-value">
+                {{ layers.internet.latency_to_8888_ms }} ms
+            </span>
+            <span class="badge badge-soft">
+                {{ layers.internet.packet_loss_pct }}% loss
+            </span>
+        </div>
+        <div class="card-sub">
+            ICMP to 8.8.8.8
+        </div>
+    </div>
+</div>
+

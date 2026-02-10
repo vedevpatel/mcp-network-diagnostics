@@ -1,4 +1,4 @@
-"""Tests for Week 4 security: secrets management and TLS."""
+"""Tests for security: secrets management and TLS."""
 
 import pytest
 from pathlib import Path

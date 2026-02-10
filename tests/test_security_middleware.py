@@ -1,4 +1,4 @@
-"""Tests for Week 5 security: middleware and production hardening."""
+"""Tests for security: middleware and production hardening."""
 
 import pytest
 from unittest.mock import Mock, AsyncMock, patch

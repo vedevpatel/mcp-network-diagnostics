@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}Tools - MCP Network Diagnostics{% endblock %}
+
+{% block content %}
+<div class="tools-page">
+    <h2 class="tools-page-title">Run tools</h2>
+    <p class="tools-page-desc">Run any diagnostic tool below. Use the form when a tool needs input (e.g. destination or device ID). Output appears under each button.</p>
+
+    {% for cat in categories %}
+    <section class="tools-category" id="cat-{{ cat.id }}">
+        <h3 class="tools-category-title">{{ cat.label }}</h3>
+        <div class="tools-grid">
+            {% for tool in cat.tools %}
+            <div class="tool-card">
+                <div class="tool-card-header">
+                    <span class="tool-label">{{ tool.label }}</span>
+                    <p class="tool-desc">{{ tool.description }}</p>
+                </div>
+                <form
+                    class="tool-form"
+                    hx-post="/tools/invoke"
+                    hx-target="#result-{{ tool.id }}"
+                    hx-swap="innerHTML"
+                    hx-indicator="#spinner-{{ tool.id }}"
+                >
+                    <input type="hidden" name="tool_id" value="{{ tool.id }}">
+                    {% for param in tool.params %}
+                    <div class="tool-form-field">
+                        <label for="tool-{{ tool.id }}-{{ param.name }}">{{ param.label }}</label>
+                        <input
+                            type="{{ param.type }}"
+                            id="tool-{{ tool.id }}-{{ param.name }}"
+                            name="{{ param.name }}"
+                            placeholder="{{ param.placeholder }}"
+                            value="{{ param.default }}"
+                        >
+                    </div>
+                    {% endfor %}
+                    <div class="tool-form-actions">
+                        <button type="submit" class="btn btn-run">
+                            <span class="btn-run-text">Run</span>
+                            <span id="spinner-{{ tool.id }}" class="htmx-indicator tool-spinner" aria-hidden="true">…</span>
+                        </button>
+                    </div>
+                </form>
+                <div class="tool-result-wrap">
+                    <div id="result-{{ tool.id }}" class="tool-result" aria-live="polite">
+                        <span class="tool-result-placeholder">Output will appear here.</span>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+    {% endfor %}
+</div>
+{% endblock %}

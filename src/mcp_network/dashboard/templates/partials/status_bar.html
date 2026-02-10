@@ -1,0 +1,10 @@
+<div class="system-status-bar" role="status" aria-label="System status">
+    <span class="system-status-item">
+        <span class="system-status-label">Agent</span>
+        <span class="system-status-dot {{ agent_class }}" aria-hidden="true"></span>
+        <span class="system-status-value">{{ agent_label }}</span>
+    </span>
+    {% if collection_html %}
+    {{ collection_html | safe }}
+    {% endif %}
+</div>

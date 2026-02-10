@@ -1,3 +1,62 @@
+/* System status bar (header) */
+.system-status-wrap {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid #21262d;
+}
+
+.system-status-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 16px;
+    font-size: 13px;
+    color: #8b949e;
+}
+
+.system-status-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.system-status-label {
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 500;
+}
+
+.system-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    flex-shrink: 0;
+}
+
+.system-status-dot.status-running {
+    background: #3fb950;
+    box-shadow: 0 0 6px rgba(63, 185, 80, 0.6);
+}
+
+.system-status-dot.status-stopped {
+    background: #6e7681;
+}
+
+.system-status-dot.status-not-started {
+    background: transparent;
+    border: 1px solid #6e7681;
+}
+
+.system-status-dot.status-degraded {
+    background: #d29922;
+    box-shadow: 0 0 6px rgba(210, 153, 34, 0.5);
+}
+
+.system-status-value {
+    color: #e6edf3;
+    font-weight: 500;
+}
+
 /* Dark theme CSS for MCP Network Diagnostics Dashboard */
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
@@ -65,5 +124,375 @@ th {
 }
 
 .status-critical {
+    color: #f85149;
+}
+
+/* Connection context note (e.g. running in Docker) */
+.connection-context-note {
+    background: rgba(88, 166, 255, 0.1);
+    border: 1px solid rgba(88, 166, 255, 0.35);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 16px;
+    font-size: 13px;
+    color: #c9d1d9;
+    line-height: 1.5;
+}
+
+.connection-context-note code {
+    background: rgba(0, 0, 0, 0.25);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+}
+
+/* Connection overview */
+.connection-card-outer {
+    margin-top: 8px;
+    padding: 24px;
+}
+
+.connection-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.connection-title {
+    font-size: 20px;
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.connection-subtitle {
+    font-size: 14px;
+    color: #8b949e;
+}
+
+.connection-meta {
+    font-size: 13px;
+    color: #8b949e;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+}
+
+.dot-live {
+    background: #3fb950;
+    box-shadow: 0 0 8px rgba(63, 185, 80, 0.7);
+}
+
+.status-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.status-pill-healthy {
+    background: rgba(63, 185, 80, 0.16);
+    color: #3fb950;
+    border: 1px solid rgba(63, 185, 80, 0.6);
+}
+
+.status-pill-degraded {
+    background: rgba(210, 153, 34, 0.16);
+    color: #d29922;
+    border: 1px solid rgba(210, 153, 34, 0.6);
+}
+
+.connection-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+    margin-top: 20px;
+}
+
+.connection-card {
+    background-color: #0d1117;
+    border-radius: 8px;
+    border: 1px solid #30363d;
+    padding: 14px 16px;
+    box-shadow: 0 10px 30px rgba(1, 4, 9, 0.5);
+}
+
+.card-label {
+    font-size: 13px;
+    color: #8b949e;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 8px;
+}
+
+.card-main {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+}
+
+.card-value {
+    font-size: 20px;
+    font-weight: 600;
+    color: #f0f6fc;
+}
+
+.card-sub {
+    font-size: 13px;
+    color: #8b949e;
+}
+
+.issues-card {
+    margin-top: 4px;
+    margin-bottom: 16px;
+    padding: 12px 14px;
+    border-radius: 8px;
+    border: 1px solid #30363d;
+    background: radial-gradient(circle at top left, rgba(248, 81, 73, 0.12), #161b22);
+}
+
+.issues-card-healthy {
+    background: radial-gradient(circle at top left, rgba(63, 185, 80, 0.12), #161b22);
+}
+
+.issues-title {
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #8b949e;
+    margin-bottom: 6px;
+}
+
+.issues-card ul {
+    list-style: disc;
+    padding-left: 20px;
+    margin: 4px 0 0 0;
+}
+
+.issues-card li {
+    font-size: 14px;
+    color: #e6edf3;
+}
+
+.badge-soft {
+    background-color: rgba(88, 166, 255, 0.16);
+    color: #58a6ff;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+}
+
+.badge-healthy {
+    background: rgba(63, 185, 80, 0.2);
+    color: #3fb950;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+}
+
+.badge-degraded {
+    background: rgba(210, 153, 34, 0.2);
+    color: #d29922;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+}
+
+.badge-unreachable {
+    background: rgba(248, 81, 73, 0.2);
+    color: #f85149;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+}
+
+/* Tools page */
+.tools-page {
+    padding-bottom: 2rem;
+}
+
+.tools-page-title {
+    font-size: 24px;
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+
+.tools-page-desc {
+    color: #8b949e;
+    font-size: 14px;
+    margin-bottom: 24px;
+}
+
+.tools-category {
+    margin-bottom: 32px;
+}
+
+.tools-category-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: #8b949e;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #30363d;
+}
+
+.tools-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 20px;
+}
+
+.tool-card {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.tool-card-header {
+    margin-bottom: 4px;
+}
+
+.tool-label {
+    font-weight: 600;
+    font-size: 16px;
+    color: #f0f6fc;
+    display: block;
+    margin-bottom: 4px;
+}
+
+.tool-desc {
+    font-size: 13px;
+    color: #8b949e;
+    margin: 0;
+    line-height: 1.4;
+}
+
+.tool-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 10px;
+}
+
+.tool-form-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 140px;
+    flex: 1;
+}
+
+.tool-form-field label {
+    font-size: 12px;
+    color: #8b949e;
+    font-weight: 500;
+}
+
+.tool-form-field input {
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    color: #e6edf3;
+    padding: 8px 10px;
+    font-size: 14px;
+}
+
+.tool-form-field input::placeholder {
+    color: #6e7681;
+}
+
+.tool-form-field input:focus {
+    outline: none;
+    border-color: #58a6ff;
+}
+
+.tool-form-actions {
+    flex-shrink: 0;
+}
+
+.btn-run {
+    background: #238636;
+    color: #fff;
+    border: 1px solid #2ea043;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.btn-run:hover {
+    background: #2ea043;
+}
+
+.btn-run .tool-spinner {
+    margin-left: 6px;
+}
+
+.htmx-request .btn-run-text {
+    opacity: 0.7;
+}
+
+.htmx-indicator {
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+
+.htmx-indicator.htmx-request {
+    opacity: 1;
+}
+
+.tool-result-wrap {
+    margin-top: 8px;
+    border-top: 1px solid #21262d;
+    padding-top: 12px;
+}
+
+.tool-result {
+    min-height: 40px;
+}
+
+.tool-result-placeholder {
+    font-size: 13px;
+    color: #6e7681;
+    font-style: italic;
+}
+
+.tool-output,
+.tool-output-error {
+    font-size: 12px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 400px;
+    overflow: auto;
+    padding: 12px;
+    border-radius: 6px;
+    margin: 0;
+    background: #0d1117;
+    border: 1px solid #30363d;
+}
+
+.tool-output-error {
+    border-color: rgba(248, 81, 73, 0.5);
+    background: rgba(248, 81, 73, 0.08);
     color: #f85149;
 }

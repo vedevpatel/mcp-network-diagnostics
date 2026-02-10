@@ -18,8 +18,9 @@ RUN uv pip install --system .
 # Final stage
 FROM python:3.10-slim
 
-# Install runtime dependencies
+# Install runtime dependencies (ip = iproute2 for default gateway detection)
 RUN apt-get update && apt-get install -y \
+    iproute2 \
     iputils-ping \
     traceroute \
     && rm -rf /var/lib/apt/lists/*
