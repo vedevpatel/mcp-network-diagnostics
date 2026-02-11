@@ -5,10 +5,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
-from mcp_network.dashboard.consumer_limits import check_consumer_rate_limit
 from mcp_network.tools import check_my_connection
 
 router = APIRouter()
@@ -25,15 +24,6 @@ async def _get_connection_status() -> dict:
 @router.get("/", response_class=HTMLResponse)
 async def overview(request: Request):
     """Render overview as a live 'My Connection' dashboard."""
-    identity = getattr(request.state, "consumer_identity", None)
-    if identity:
-        allowed, _ = check_consumer_rate_limit(identity)
-        if not allowed:
-            return Response(
-                content="Rate limit exceeded. Please try again in a minute.",
-                status_code=429,
-                media_type="text/plain",
-            )
     connection = await _get_connection_status()
 
     return templates.TemplateResponse(
@@ -48,15 +38,6 @@ async def overview(request: Request):
 @router.get("/partials/connection", response_class=HTMLResponse)
 async def connection_partial(request: Request):
     """Return the current connection status for HTMX live updates."""
-    identity = getattr(request.state, "consumer_identity", None)
-    if identity:
-        allowed, _ = check_consumer_rate_limit(identity)
-        if not allowed:
-            return Response(
-                content="<div class=\"stat-value\">Rate limited</div>",
-                status_code=429,
-                media_type="text/html",
-            )
     connection = await _get_connection_status()
 
     return templates.TemplateResponse(

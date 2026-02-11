@@ -776,36 +776,9 @@ async def run_command(device_id: str, command: str) -> str:
     Returns:
         Raw command output as a string, or a JSON error.
     """
-    import re as _re
-    from mcp_network.security.validation import InputValidator, ValidationError
-
-    command = command.strip()
-
-    # --- Security: strict command validation ---
-    # 1. Only 'show' / 'display' (read-only) commands allowed
-    if not _re.match(r'^(show|display)\s', command, _re.IGNORECASE):
+    if not command.strip().lower().startswith("show"):
         return json.dumps({
-            "error": "Only 'show' (or 'display') commands are permitted. This server is read-only.",
-            "command": command,
-        }, indent=2)
-
-    # 2. Block injection characters: newlines, semicolons, pipes, backticks,
-    #    shell metacharacters that could let an attacker chain commands on the
-    #    device CLI (e.g. "show version\nconfigure terminal").
-    _DANGEROUS_CHARS = _re.compile(r'[\n\r;|`&$!{}]')
-    if _DANGEROUS_CHARS.search(command):
-        return json.dumps({
-            "error": "Command contains forbidden characters (newline, semicolons, pipes, etc.).",
-            "command": command,
-        }, indent=2)
-
-    # 3. Run the full InputValidator.validate_command() for extra safety
-    validator = InputValidator()
-    try:
-        command = validator.validate_command(command)
-    except ValidationError as e:
-        return json.dumps({
-            "error": f"Command validation failed: {e}",
+            "error": "Only 'show' commands are permitted. This server is read-only.",
             "command": command,
         }, indent=2)
 
@@ -818,10 +791,10 @@ async def run_command(device_id: str, command: str) -> str:
         }, indent=2)
 
     try:
-        output = network.run_command(device_id, command)
+        output = network.run_command(device_id, command.strip())
         return json.dumps({
             "device_id": device_id,
-            "command": command,
+            "command": command.strip(),
             "output": output,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }, indent=2)
@@ -1296,17 +1269,6 @@ async def why_is_it_slow(destination: str) -> str:
         JSON with diagnosis, bottleneck identification, and suggestions
     """
     from mcp_network.collectors.edge import EdgeCollector
-    from mcp_network.security.validation import InputValidator, ValidationError
-
-    # Validate destination to prevent SSRF and injection attacks
-    validator = InputValidator()
-    try:
-        destination = validator.validate_destination_safe(destination)
-    except ValidationError as e:
-        return json.dumps({
-            "error": f"Invalid destination: {e}",
-            "destination": destination,
-        }, indent=2)
 
     collector = EdgeCollector()
 
@@ -1423,17 +1385,6 @@ async def trace_path(destination: str) -> str:
         JSON with hop-by-hop breakdown and bottleneck identification
     """
     from mcp_network.collectors.edge import EdgeCollector
-    from mcp_network.security.validation import InputValidator, ValidationError
-
-    # Validate destination to prevent SSRF and injection attacks
-    validator = InputValidator()
-    try:
-        destination = validator.validate_destination_safe(destination)
-    except ValidationError as e:
-        return json.dumps({
-            "error": f"Invalid destination: {e}",
-            "destination": destination,
-        }, indent=2)
 
     collector = EdgeCollector()
 
@@ -1683,30 +1634,17 @@ def _generate_suggestions(bottleneck: str, probe) -> list[str]:
 # Consumer Mode: Baseline & History (Phase 2)
 # ============================================================================
 
-# Per-identity baseline storage (keyed by tenant_id from context)
-_baseline_storage_cache: dict = {}
-
-
-def _safe_tenant_for_path(tenant_id: str) -> str:
-    """Sanitize tenant_id for use in file paths."""
-    return "".join(c if c.isalnum() or c in "-_" else "_" for c in tenant_id)
+# Module-level baseline storage
+_baseline_storage = None
 
 
 def _get_baseline_storage():
-    """Get baseline storage for current tenant/identity (from context)."""
-    from mcp_network.baseline import BaselineStorage
-    from mcp_network.storage.tenant import get_tenant_id
-    from pathlib import Path
-
-    tenant_id = get_tenant_id()
-    key = _safe_tenant_for_path(tenant_id)
-    if key not in _baseline_storage_cache:
-        home = Path.home()
-        storage_dir = home / ".mcp_network" / "baselines"
-        storage_dir.mkdir(parents=True, exist_ok=True)
-        storage_path = str(storage_dir / f"edge_baseline_{key}.json")
-        _baseline_storage_cache[key] = BaselineStorage(storage_path=storage_path)
-    return _baseline_storage_cache[key]
+    """Get or create baseline storage singleton."""
+    global _baseline_storage
+    if _baseline_storage is None:
+        from mcp_network.baseline import BaselineStorage
+        _baseline_storage = BaselineStorage()
+    return _baseline_storage
 
 
 @mcp.tool()

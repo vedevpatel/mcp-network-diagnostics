@@ -50,8 +50,8 @@ async def status_partial(request: Request):
         agent_label = "Stopped"
         agent_class = "status-stopped"
 
-    # Collection: pass structured data (not pre-rendered HTML) to avoid XSS
-    collection_info = None
+    # Collection: show only when we have data (operator mode)
+    collection_html = ""
     if collection_data is not None:
         score = collection_data.get("collection_quality_score", 0)
         reachable = collection_data.get("reachable_devices", 0)
@@ -67,11 +67,11 @@ async def status_partial(request: Request):
             else:
                 coll_class = "status-stopped"
                 coll_label = f"Unhealthy ({pct}% reachable)"
-            collection_info = {"css_class": coll_class, "label": coll_label}
+            collection_html = f'<span class="system-status-item"><span class="system-status-label">Collection</span> <span class="system-status-dot {coll_class}" aria-hidden="true"></span> <span class="system-status-value">{coll_label}</span></span>'
 
     return templates.TemplateResponse("partials/status_bar.html", {
         "request": request,
         "agent_label": agent_label,
         "agent_class": agent_class,
-        "collection_info": collection_info,
+        "collection_html": collection_html,
     })

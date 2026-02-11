@@ -4,7 +4,6 @@ from datetime import datetime, timedelta
 from typing import Optional, List
 from .database import Database
 from .models import Device, Metric, Incident, Intent, ConfigSnapshot, AuditEvent
-from .tenant import get_tenant_id
 
 
 class DeviceRepository:
@@ -24,29 +23,23 @@ class DeviceRepository:
 
     def find_by_id(self, device_id: str) -> Optional[Device]:
         """Find device by ID."""
-        tid = get_tenant_id()
         cursor = self.db.execute(
-            "SELECT * FROM devices WHERE id = ? AND tenant_id = ?",
-            (device_id, tid)
+            "SELECT * FROM devices WHERE id = ?",
+            (device_id,)
         )
         row = cursor.fetchone()
         return Device.from_row(row) if row else None
 
     def find_all(self) -> List[Device]:
         """Get all devices."""
-        tid = get_tenant_id()
-        cursor = self.db.execute(
-            "SELECT * FROM devices WHERE tenant_id = ? ORDER BY name",
-            (tid,)
-        )
+        cursor = self.db.execute("SELECT * FROM devices ORDER BY name")
         return [Device.from_row(row) for row in cursor.fetchall()]
 
     def update_last_seen(self, device_id: str, timestamp: datetime):
         """Update last seen timestamp."""
-        tid = get_tenant_id()
         self.db.execute(
-            "UPDATE devices SET last_seen = ? WHERE id = ? AND tenant_id = ?",
-            (timestamp.isoformat(), device_id, tid)
+            "UPDATE devices SET last_seen = ? WHERE id = ?",
+            (timestamp.isoformat(), device_id)
         )
         self.db.commit()
 
@@ -81,40 +74,32 @@ class MetricRepository:
         limit: int = 1000,
     ) -> List[Metric]:
         """Query metrics for a device in a time range."""
-        tid = get_tenant_id()
         cursor = self.db.execute("""
             SELECT * FROM metrics
             WHERE device_id = ? AND metric_name = ?
             AND timestamp BETWEEN ? AND ?
-            AND tenant_id = ?
             ORDER BY timestamp DESC
             LIMIT ?
-        """, (device_id, metric_name, start_time.isoformat(), end_time.isoformat(), tid, limit))
+        """, (device_id, metric_name, start_time.isoformat(), end_time.isoformat(), limit))
 
         return [Metric.from_row(row) for row in cursor.fetchall()]
 
     def get_latest(self, device_id: str, metric_name: str) -> Optional[Metric]:
         """Get latest metric value."""
-        tid = get_tenant_id()
         cursor = self.db.execute("""
             SELECT * FROM metrics
             WHERE device_id = ? AND metric_name = ?
-            AND tenant_id = ?
             ORDER BY timestamp DESC
             LIMIT 1
-        """, (device_id, metric_name, tid))
+        """, (device_id, metric_name))
 
         row = cursor.fetchone()
         return Metric.from_row(row) if row else None
 
     def delete_old(self, days: int = 90):
         """Delete metrics older than N days."""
-        tid = get_tenant_id()
         cutoff = (datetime.now() - timedelta(days=days)).isoformat()
-        self.db.execute(
-            "DELETE FROM metrics WHERE timestamp < ? AND tenant_id = ?",
-            (cutoff, tid)
-        )
+        self.db.execute("DELETE FROM metrics WHERE timestamp < ?", (cutoff,))
         self.db.commit()
 
 
@@ -136,55 +121,49 @@ class IncidentRepository:
 
     def find_by_id(self, incident_id: str) -> Optional[Incident]:
         """Find incident by ID."""
-        tid = get_tenant_id()
         cursor = self.db.execute(
-            "SELECT * FROM incidents WHERE id = ? AND tenant_id = ?",
-            (incident_id, tid)
+            "SELECT * FROM incidents WHERE id = ?",
+            (incident_id,)
         )
         row = cursor.fetchone()
         return Incident.from_row(row) if row else None
 
     def find_active(self) -> List[Incident]:
         """Get all active (unresolved) incidents."""
-        tid = get_tenant_id()
         cursor = self.db.execute("""
             SELECT * FROM incidents
-            WHERE resolved_at IS NULL AND tenant_id = ?
+            WHERE resolved_at IS NULL
             ORDER BY created_at DESC
-        """, (tid,))
+        """)
         return [Incident.from_row(row) for row in cursor.fetchall()]
 
     def find_recent(self, days: int = 7, limit: int = 100) -> List[Incident]:
         """Get recent incidents."""
-        tid = get_tenant_id()
         cutoff = (datetime.now() - timedelta(days=days)).isoformat()
         cursor = self.db.execute("""
             SELECT * FROM incidents
-            WHERE created_at >= ? AND tenant_id = ?
+            WHERE created_at >= ?
             ORDER BY created_at DESC
             LIMIT ?
-        """, (cutoff, tid, limit))
+        """, (cutoff, limit))
         return [Incident.from_row(row) for row in cursor.fetchall()]
 
     def find_by_device(self, device_id: str, days: int = 30) -> List[Incident]:
         """Get incidents affecting a specific device."""
-        tid = get_tenant_id()
         cutoff = (datetime.now() - timedelta(days=days)).isoformat()
         cursor = self.db.execute("""
             SELECT * FROM incidents
             WHERE created_at >= ?
             AND affected_devices LIKE ?
-            AND tenant_id = ?
             ORDER BY created_at DESC
-        """, (cutoff, f'%"{device_id}"%', tid))
+        """, (cutoff, f'%"{device_id}"%'))
         return [Incident.from_row(row) for row in cursor.fetchall()]
 
     def resolve(self, incident_id: str, resolved_at: datetime):
         """Mark incident as resolved."""
-        tid = get_tenant_id()
         self.db.execute(
-            "UPDATE incidents SET resolved_at = ? WHERE id = ? AND tenant_id = ?",
-            (resolved_at.isoformat(), incident_id, tid)
+            "UPDATE incidents SET resolved_at = ? WHERE id = ?",
+            (resolved_at.isoformat(), incident_id)
         )
         self.db.commit()
 
@@ -207,58 +186,51 @@ class IntentRepository:
 
     def find_by_id(self, intent_id: str) -> Optional[Intent]:
         """Find intent by ID."""
-        tid = get_tenant_id()
         cursor = self.db.execute(
-            "SELECT * FROM intents WHERE id = ? AND tenant_id = ?",
-            (intent_id, tid)
+            "SELECT * FROM intents WHERE id = ?",
+            (intent_id,)
         )
         row = cursor.fetchone()
         return Intent.from_row(row) if row else None
 
     def find_active(self) -> List[Intent]:
         """Get all active intents."""
-        tid = get_tenant_id()
         cursor = self.db.execute("""
             SELECT * FROM intents
-            WHERE active = 1 AND tenant_id = ?
+            WHERE active = 1
             ORDER BY created_at DESC
-        """, (tid,))
+        """)
         return [Intent.from_row(row) for row in cursor.fetchall()]
 
     def find_all(self) -> List[Intent]:
         """Get all intents."""
-        tid = get_tenant_id()
         cursor = self.db.execute("""
             SELECT * FROM intents
-            WHERE tenant_id = ?
             ORDER BY created_at DESC
-        """, (tid,))
+        """)
         return [Intent.from_row(row) for row in cursor.fetchall()]
 
     def deactivate(self, intent_id: str):
         """Deactivate an intent."""
-        tid = get_tenant_id()
         self.db.execute(
-            "UPDATE intents SET active = 0 WHERE id = ? AND tenant_id = ?",
-            (intent_id, tid)
+            "UPDATE intents SET active = 0 WHERE id = ?",
+            (intent_id,)
         )
         self.db.commit()
 
     def update_check_time(self, intent_id: str, timestamp: datetime):
         """Update last checked timestamp."""
-        tid = get_tenant_id()
         self.db.execute(
-            "UPDATE intents SET last_checked = ? WHERE id = ? AND tenant_id = ?",
-            (timestamp.isoformat(), intent_id, tid)
+            "UPDATE intents SET last_checked = ? WHERE id = ?",
+            (timestamp.isoformat(), intent_id)
         )
         self.db.commit()
 
     def update_violation_time(self, intent_id: str, timestamp: datetime):
         """Update last violated timestamp."""
-        tid = get_tenant_id()
         self.db.execute(
-            "UPDATE intents SET last_violated = ? WHERE id = ? AND tenant_id = ?",
-            (timestamp.isoformat(), intent_id, tid)
+            "UPDATE intents SET last_violated = ? WHERE id = ?",
+            (timestamp.isoformat(), intent_id)
         )
         self.db.commit()
 
@@ -279,13 +251,12 @@ class ConfigRepository:
 
     def find_latest(self, device_id: str) -> Optional[ConfigSnapshot]:
         """Get latest config snapshot for device."""
-        tid = get_tenant_id()
         cursor = self.db.execute("""
             SELECT * FROM config_snapshots
-            WHERE device_id = ? AND tenant_id = ?
+            WHERE device_id = ?
             ORDER BY captured_at DESC
             LIMIT 1
-        """, (device_id, tid))
+        """, (device_id,))
 
         row = cursor.fetchone()
         return ConfigSnapshot.from_row(row) if row else None
@@ -297,26 +268,23 @@ class ConfigRepository:
         end_time: datetime,
     ) -> List[ConfigSnapshot]:
         """Find config snapshots in a time range."""
-        tid = get_tenant_id()
         cursor = self.db.execute("""
             SELECT * FROM config_snapshots
             WHERE device_id = ?
             AND captured_at BETWEEN ? AND ?
-            AND tenant_id = ?
             ORDER BY captured_at DESC
-        """, (device_id, start_time.isoformat(), end_time.isoformat(), tid))
+        """, (device_id, start_time.isoformat(), end_time.isoformat()))
 
         return [ConfigSnapshot.from_row(row) for row in cursor.fetchall()]
 
     def find_changes(self, device_id: str, days: int = 30) -> List[ConfigSnapshot]:
         """Find config changes (where hash changed)."""
-        tid = get_tenant_id()
         cutoff = (datetime.now() - timedelta(days=days)).isoformat()
         cursor = self.db.execute("""
             SELECT * FROM config_snapshots
-            WHERE device_id = ? AND captured_at >= ? AND tenant_id = ?
+            WHERE device_id = ? AND captured_at >= ?
             ORDER BY captured_at DESC
-        """, (device_id, cutoff, tid))
+        """, (device_id, cutoff))
 
         snapshots = [ConfigSnapshot.from_row(row) for row in cursor.fetchall()]
 

@@ -126,15 +126,6 @@ def main():
         logger.info(f"Starting MCP Network Diagnostics Server with {args.collector} collector (stdio)")
         mcp.run(transport="stdio")
     else:
-        # Security: warn loudly when binding to all interfaces without auth
-        if args.host in ("0.0.0.0", "::") and not args.require_auth:
-            logger.warning(
-                "SECURITY WARNING: HTTP server binds to all interfaces (%s) "
-                "without authentication. Anyone with network access can call "
-                "any MCP tool. Use --require-auth or bind to 127.0.0.1.",
-                args.host,
-            )
-
         # streamable-http: run with optional auth and rate limiting
         from mcp_network.server_http import run_http
         run_http(

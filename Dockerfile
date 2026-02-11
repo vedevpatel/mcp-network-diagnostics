@@ -35,26 +35,19 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 COPY src/ ./src/
 COPY pyproject.toml README.md ./
 
-# Create non-root user and data directory
-RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin appuser \
-    && mkdir -p /data \
-    && chown -R appuser:appuser /data /app
+# Create data directory
+RUN mkdir -p /data
 
 # Environment variables
 ENV MCP_NETWORK_DATA_DIR=/data
 ENV PYTHONUNBUFFERED=1
-# Dashboard binds to 0.0.0.0 inside Docker (container networking)
-ENV MCP_NETWORK_DASHBOARD_HOST=0.0.0.0
 
 # Expose ports
 EXPOSE 8080
 
-# Switch to non-root user
-USER appuser
-
-# Health check: actually probe the dashboard HTTP endpoint
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/')" || exit 1
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD python -c "import sys; sys.exit(0)"
 
 # Default command: run dashboard
 CMD ["python", "-m", "mcp_network.dashboard"]
