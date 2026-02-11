@@ -3,7 +3,7 @@ import asyncio
 import json
 import os
 import tempfile
-from unittest.mock import AsyncMock, patch
+
 
 
 from mcp_network.baseline import BaselineStorage, BaselineSnapshot
@@ -343,8 +343,7 @@ class TestBaselineTools:
 
     def test_record_baseline(self):
         """Test record_baseline tool."""
-        from mcp_network.collectors.edge import HopResult, DNSResult
-        
+
         from mcp_network.tools import record_baseline
         result_json = _run(record_baseline())
         result = json.loads(result_json)
@@ -371,7 +370,7 @@ class TestBaselineTools:
 
     def test_record_and_compare_workflow(self):
         """Test full workflow: record baseline then compare."""
-        from mcp_network.collectors.edge import HopResult, DNSResult
+
         from mcp_network.tools import record_baseline, compare_to_baseline, _get_baseline_storage
 
         # Clear baseline
@@ -393,7 +392,7 @@ class TestBaselineTools:
 
     def test_clear_baseline_tool(self):
         """Test clear_baseline tool."""
-        from mcp_network.collectors.edge import HopResult, DNSResult
+
         from mcp_network.tools import record_baseline, clear_baseline, _get_baseline_storage
 
         # Record some data
