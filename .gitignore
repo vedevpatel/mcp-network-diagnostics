@@ -6,3 +6,5 @@ dist/
 build/
 *.egg-info/
 *_topology.local.yaml
+
+RELEASE_GUIDE.md
