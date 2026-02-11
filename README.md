@@ -15,7 +15,7 @@ Diagnose enterprise networks by connecting to routers and switches:
 - Multi-vendor support (Cisco IOS-XR, IOS-XE, NX-OS)
 
 ### Consumer Mode (Edge Diagnostics)
-Diagnose your home/office network without device access:
+Diagnose your home/office network without device access. See **[CONSUMER_MODE.md](CONSUMER_MODE.md)** for the full consumer guide (tools, baseline workflow, use cases).
 - **Web dashboard** – Browser UI with "My Connection" overview, consumer tools, guest sessions, and per-identity baselines
 - Gateway health checks
 - DNS resolution timing
@@ -36,6 +36,21 @@ git clone https://github.com/vedevpatel/mcp-network-diagnostics.git
 cd mcp-network-diagnostics
 uv sync
 ```
+
+### Quick start (Consumer)
+
+One command to run the dashboard, then open the app in your browser—no API key or sign-in required:
+
+```bash
+uv run python -m mcp_network.dashboard
+# Open http://localhost:8080
+```
+
+Use the site as a **guest** (session is identified by a signed cookie; baselines and data are scoped per identity). From the Overview you get a live "My Connection" view (gateway, DNS, internet latency). From **Tools** you can run "Check my connection", "Trace path", "Why is it slow?", and baseline record/compare.
+
+To use the same diagnostics from Claude (or any MCP client), point your [Claude Desktop config](#consumer-mode-no-setup-required) at this repo and run `check_my_connection()` or `why_is_it_slow("zoom.us")` via MCP.
+
+For the full consumer guide—all tools, baseline workflow, and use cases—see **[CONSUMER_MODE.md](CONSUMER_MODE.md)**.
 
 ### Web Dashboard (Consumer UI)
 

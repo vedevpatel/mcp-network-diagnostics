@@ -172,6 +172,21 @@ def test_connection_partial(client):
     assert b"<html" not in response.content
 
 
+def test_connection_partial_structure(client):
+    """Test connection partial includes consumer-friendly sections."""
+    response = client.get("/partials/connection")
+    assert response.status_code == 200
+    content = response.content
+    assert b"My Connection" in content
+    assert b"WiFi" in content
+    assert b"Local Network" in content or b"Gateway" in content
+    assert b"DNS" in content
+    assert b"Internet" in content
+    # Overall status is one of healthy / warning / critical / degraded (template capitalizes)
+    lower = content.lower()
+    assert any(s in lower for s in (b"healthy", b"warning", b"critical", b"degraded"))
+
+
 def test_static_files(client):
     """Test static files are served."""
     response = client.get("/static/style.css")
@@ -185,6 +200,63 @@ def test_health_check_endpoint(client, sample_devices, sample_incidents):
     assert response.status_code == 200
     # Should show some health percentage
     assert b"%" in response.content
+
+
+def test_guest_session_shows_using_as_guest(client):
+    """Test that after receiving session cookie, next request shows 'Using as guest'."""
+    r1 = client.get("/")
+    assert r1.status_code == 200
+    r2 = client.get("/")
+    assert r2.status_code == 200
+    assert b"Using as guest" in r2.content
+
+
+def test_consumer_rate_limit_overview_returns_429(client, monkeypatch):
+    """Test overview returns 429 when consumer rate limit is exceeded."""
+    def deny(_identity):
+        return False, 60.0
+
+    monkeypatch.setattr(
+        "mcp_network.dashboard.routes.overview.check_consumer_rate_limit",
+        deny,
+    )
+    response = client.get("/")
+    assert response.status_code == 429
+    assert b"Rate limit" in response.content or b"rate limit" in response.content.lower()
+
+
+def test_consumer_rate_limit_tools_invoke_returns_429(client, monkeypatch):
+    """Test tools invoke returns 429 when consumer rate limit is exceeded."""
+    def deny(_identity):
+        return False, 60.0
+
+    monkeypatch.setattr(
+        "mcp_network.dashboard.routes.tools.check_consumer_rate_limit",
+        deny,
+    )
+    response = client.post(
+        "/tools/invoke",
+        data={"tool_id": "check_my_connection"},
+    )
+    assert response.status_code == 429
+    assert b"Rate limit" in response.content or b"rate limit" in response.content.lower()
+
+
+def test_baseline_storage_per_identity(monkeypatch, tmp_path):
+    """Test baseline storage is isolated per consumer identity (tenant)."""
+    from mcp_network.storage.tenant import set_tenant_id
+    from mcp_network.tools import _get_baseline_storage
+
+    monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+
+    set_tenant_id("guest_alpha")
+    storage_a = _get_baseline_storage()
+    set_tenant_id("guest_beta")
+    storage_b = _get_baseline_storage()
+
+    assert storage_a.storage_path != storage_b.storage_path
+    assert "guest_alpha" in storage_a.storage_path or "alpha" in storage_a.storage_path
+    assert "guest_beta" in storage_b.storage_path or "beta" in storage_b.storage_path
 
 
 # ============================================================================
