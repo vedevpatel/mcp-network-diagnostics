@@ -48,3 +48,8 @@ asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 pythonpath = "src"
+log_cli = true
+log_cli_level = "WARNING"
+markers = [
+    "no_global_network_mock: Disable global EdgeCollector mocks for this test"
+]

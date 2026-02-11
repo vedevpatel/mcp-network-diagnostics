@@ -66,8 +66,9 @@ def _make_mock_process(stdout: str, returncode: int = 0):
     return proc
 
 
+@pytest.mark.no_global_network_mock
 class TestEdgeCollector:
-    """Basic tests for edge collector functionality."""
+    """Test EdgeCollector low-level parsing logic (requires real methods)."""
 
     def setup_method(self):
         self.collector = EdgeCollector()
@@ -132,17 +133,7 @@ class TestEdgeCollector:
     def test_probe_destination_basic(self):
         """Test full destination probe."""
         # Use a reliable target
-        with patch.object(self.collector, "_get_default_gateway", return_value="192.168.1.1"), \
-             patch.object(self.collector, "_ping", new_callable=AsyncMock) as mock_ping, \
-             patch.object(self.collector, "_probe_dns", new_callable=AsyncMock) as mock_dns, \
-             patch.object(self.collector, "_run_traceroute", new_callable=AsyncMock) as mock_trace:
-            
-            from mcp_network.collectors.edge import HopResult, DNSResult
-            mock_ping.return_value = (10.0, 0.0)
-            mock_trace.return_value = [HopResult(1, "192.168.1.1", "gateway", 2.0, 0.0)]
-            mock_dns.return_value = DNSResult("google.com", "8.8.8.8", 10.0)
-            
-            probe = _run(self.collector.probe_destination("google.com"))
+        probe = _run(self.collector.probe_destination("google.com"))
 
         assert probe.target == "google.com"
         assert probe.gateway is not None
@@ -214,8 +205,9 @@ class TestEdgeTools:
                 assert "suggestions" in result
 
 
+@pytest.mark.no_global_network_mock
 class TestWifiDetectionPerOS:
-    """Tests that WiFi SSID and stats are parsed correctly per OS (mocked subprocess)."""
+    """Test Wi-Fi parsing logic per OS (requires real methods)."""
 
     @pytest.mark.asyncio
     async def test_macos_airport_parses_ssid(self):
@@ -389,8 +381,9 @@ class TestWifiDetectionPerOS:
         assert result is None
 
 
+@pytest.mark.no_global_network_mock
 class TestScanLocalNetwork:
-    """Tests for local network scan (ARP table)."""
+    """Test local network scanning logic (requires real methods)."""
 
     def test_parse_arp_macos(self):
         """Parse macOS arp -a output."""
