@@ -1,6 +1,7 @@
 """Tools dashboard: run MCP tools from the UI and show output."""
 
 import html
+import json
 from pathlib import Path
 
 from fastapi import APIRouter, Request, Form, Depends
@@ -15,6 +16,18 @@ _validator = InputValidator()
 
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
+
+# Mapping of consumer tool IDs to their partial templates
+CONSUMER_TOOL_PARTIALS = {
+    "check_my_connection": "connection.html",
+    "trace_path": "trace_path.html",
+    "why_is_it_slow": "why_slow.html",
+    "record_baseline": "baseline_record.html",
+    "compare_to_baseline": "baseline_compare.html",
+    "clear_baseline": "baseline_clear.html",
+    "run_speedtest": "speedtest.html",
+    "scan_local_network": "scan_network.html",
+}
 
 # Tool definitions: id = function name in mcp_network.tools, label, category, description, params
 TOOL_DEFINITIONS = [
@@ -86,15 +99,51 @@ def _build_kwargs(tool_def: dict, form_data: dict) -> dict:
     return kwargs
 
 
-def _render_output_fragment(output: str, error: bool = False) -> str:
-    """Return HTML fragment for tool output (for HTMX swap)."""
+def _collapsible_json(output: str) -> str:
+    """Return HTML for a collapsible raw JSON section."""
     escaped = html.escape(output) if output else "(no output)"
-    css = "tool-output tool-output-error" if error else "tool-output"
-    return f'<pre class="{css}" id="tool-output-pre">{escaped}</pre>'
+    return f'''
+<details class="json-details">
+    <summary class="json-summary">Show raw JSON</summary>
+    <pre class="tool-output" id="tool-output-pre">{escaped}</pre>
+</details>
+'''
+
+
+def _render_output_fragment(output: str, tool_id: str = None, error: bool = False) -> str:
+    """Return HTML fragment for tool output (for HTMX swap).
+    
+    For consumer tools, renders a human-friendly partial with collapsible JSON.
+    For other tools or errors, shows raw JSON in a pre block.
+    """
+    if error:
+        escaped = html.escape(output) if output else "(no output)"
+        return f'<pre class="tool-output tool-output-error" id="tool-output-pre">{escaped}</pre>'
+    
+    # Try to render using a partial for consumer tools
+    if tool_id and tool_id in CONSUMER_TOOL_PARTIALS:
+        try:
+            data = json.loads(output)
+            partial_name = CONSUMER_TOOL_PARTIALS[tool_id]
+            
+            # Special case: check_my_connection uses 'connection' key in template
+            if tool_id == "check_my_connection":
+                rendered = templates.get_template(f"partials/{partial_name}").render(connection=data)
+            else:
+                rendered = templates.get_template(f"partials/{partial_name}").render(data=data)
+            
+            return rendered + _collapsible_json(output)
+        except (json.JSONDecodeError, Exception):
+            # Fall back to raw output if parsing or rendering fails
+            pass
+    
+    # Default: raw JSON in pre block
+    escaped = html.escape(output) if output else "(no output)"
+    return f'<pre class="tool-output" id="tool-output-pre">{escaped}</pre>'
 
 
 def _render_error_fragment(message: str) -> str:
-    return _render_output_fragment(message, error=True)
+    return _render_output_fragment(message, tool_id=None, error=True)
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -159,6 +208,6 @@ async def invoke_tool(request: Request, _auth=Depends(require_dashboard_auth)):
 
     try:
         result = await fn(**kwargs)
-        return _render_output_fragment(result)
+        return _render_output_fragment(result, tool_id=tool_id)
     except Exception as e:
         return _render_error_fragment(str(e))

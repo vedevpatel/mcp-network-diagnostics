@@ -1,0 +1,72 @@
+<div class="tool-result-friendly">
+    <div class="result-header">
+        <span class="result-title">Baseline Comparison</span>
+        {% if data.error %}
+        <span class="status-pill status-pill-degraded">Error</span>
+        {% elif data.overall_status == 'critical' %}
+        <span class="status-pill status-pill-degraded">Critical</span>
+        {% elif data.overall_status == 'warning' %}
+        <span class="status-pill status-pill-degraded">Warning</span>
+        {% else %}
+        <span class="status-pill status-pill-healthy">Normal</span>
+        {% endif %}
+    </div>
+
+    {% if data.error %}
+    <div class="issues-card">
+        <div class="issues-title">{{ data.error }}</div>
+        {% if data.hint %}
+        <p>{{ data.hint }}</p>
+        {% endif %}
+        {% if data.current_samples is defined %}
+        <p>You have {{ data.current_samples }} of {{ data.required_samples }} required samples.</p>
+        {% endif %}
+    </div>
+    {% else %}
+    <!-- Summary -->
+    <div class="diagnosis-summary">
+        <p class="diagnosis-summary-text">{{ data.summary }}</p>
+        <span class="baseline-samples-badge">Based on {{ data.baseline_samples }} samples</span>
+    </div>
+
+    <!-- Anomalies -->
+    {% if data.anomalies %}
+    <div class="issues-card">
+        <div class="issues-title">Anomalies detected</div>
+        <ul>
+            {% for anomaly in data.anomalies %}
+            <li>
+                <span class="anomaly-severity anomaly-{{ anomaly.severity }}">{{ anomaly.severity|upper }}</span>
+                {{ anomaly.explanation }}
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% else %}
+    <div class="issues-card issues-card-healthy">
+        <div class="issues-title">All metrics normal</div>
+        <p>Your current connection matches your historical baseline.</p>
+    </div>
+    {% endif %}
+
+    <!-- Detailed comparisons -->
+    {% if data.comparisons %}
+    <div class="comparison-table">
+        <div class="comparison-header">
+            <span class="comp-col-metric">Metric</span>
+            <span class="comp-col-current">Current</span>
+            <span class="comp-col-baseline">Baseline</span>
+            <span class="comp-col-deviation">Deviation</span>
+        </div>
+        {% for comp in data.comparisons %}
+        <div class="comparison-row {% if comp.severity == 'critical' %}comp-critical{% elif comp.severity == 'warning' %}comp-warning{% endif %}">
+            <span class="comp-col-metric">{{ comp.metric|replace('_', ' ')|title }}</span>
+            <span class="comp-col-current">{{ comp.current }}</span>
+            <span class="comp-col-baseline">{{ comp.baseline_mean }} (±{{ comp.baseline_stddev }})</span>
+            <span class="comp-col-deviation">{{ comp.deviation_factor }}x</span>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endif %}
+</div>

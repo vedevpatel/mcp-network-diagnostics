@@ -1,0 +1,32 @@
+<div class="tool-result-friendly">
+    <div class="result-header">
+        <span class="result-title">Local Network Scan</span>
+        <span class="badge-soft">{{ data.count }} device{% if data.count != 1 %}s{% endif %} found</span>
+    </div>
+
+    {% if data.note %}
+    <p class="result-note">{{ data.note }}</p>
+    {% endif %}
+
+    {% if data.devices %}
+    <div class="device-table">
+        <div class="device-header">
+            <span class="device-col-ip">IP Address</span>
+            <span class="device-col-mac">MAC Address</span>
+            <span class="device-col-host">Hostname</span>
+        </div>
+        {% for device in data.devices %}
+        <div class="device-row">
+            <span class="device-col-ip">{{ device.ip }}</span>
+            <span class="device-col-mac">{{ device.mac or '-' }}</span>
+            <span class="device-col-host">{{ device.hostname or '-' }}</span>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="issues-card">
+        <div class="issues-title">No devices found</div>
+        <p>No recent network traffic was detected. Devices appear in the ARP cache only after your machine has communicated with them.</p>
+    </div>
+    {% endif %}
+</div>

@@ -1,0 +1,46 @@
+<div class="tool-result-friendly">
+    <div class="result-header">
+        <span class="result-title">Baseline Recorded</span>
+        <span class="status-pill status-pill-healthy">Success</span>
+    </div>
+
+    <div class="issues-card issues-card-healthy">
+        <div class="issues-title">Snapshot saved</div>
+        <p>Your current network state has been recorded as a baseline sample.</p>
+        <p class="baseline-samples-note">Total samples: <strong>{{ data.total_baseline_samples }}</strong></p>
+        {% if data.total_baseline_samples < 5 %}
+        <p class="result-hint">Record at least {{ 5 - data.total_baseline_samples }} more samples to enable baseline comparisons.</p>
+        {% endif %}
+    </div>
+
+    {% if data.metrics %}
+    <div class="metrics-grid">
+        <div class="metric-item">
+            <span class="metric-label">Gateway latency</span>
+            <span class="metric-value">{% if data.metrics.gateway_latency_ms is not none %}{{ data.metrics.gateway_latency_ms }} ms{% else %}n/a{% endif %}</span>
+        </div>
+        <div class="metric-item">
+            <span class="metric-label">Gateway loss</span>
+            <span class="metric-value">{{ data.metrics.gateway_loss_pct }}%</span>
+        </div>
+        <div class="metric-item">
+            <span class="metric-label">DNS resolution</span>
+            <span class="metric-value">{{ data.metrics.dns_resolution_ms }} ms</span>
+        </div>
+        <div class="metric-item">
+            <span class="metric-label">External latency</span>
+            <span class="metric-value">{% if data.metrics.external_latency_ms is not none %}{{ data.metrics.external_latency_ms }} ms{% else %}n/a{% endif %}</span>
+        </div>
+        <div class="metric-item">
+            <span class="metric-label">External loss</span>
+            <span class="metric-value">{{ data.metrics.external_loss_pct }}%</span>
+        </div>
+        {% if data.metrics.wifi_signal_dbm is not none %}
+        <div class="metric-item">
+            <span class="metric-label">WiFi signal</span>
+            <span class="metric-value">{{ data.metrics.wifi_signal_dbm }} dBm</span>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>

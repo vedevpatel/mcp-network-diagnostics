@@ -1,0 +1,102 @@
+<div class="tool-result-friendly">
+    <div class="result-header">
+        <span class="result-title">Diagnosis for {{ data.destination }}</span>
+        {% if data.error %}
+        <span class="status-pill status-pill-degraded">Error</span>
+        {% elif data.diagnosis.bottleneck == 'none' %}
+        <span class="status-pill status-pill-healthy">Healthy</span>
+        {% else %}
+        <span class="status-pill status-pill-degraded">Issue found</span>
+        {% endif %}
+    </div>
+
+    {% if data.error %}
+    <div class="issues-card">
+        <div class="issues-title">Error</div>
+        <p>{{ data.error }}</p>
+    </div>
+    {% else %}
+    <!-- Summary -->
+    <div class="diagnosis-summary">
+        <p class="diagnosis-summary-text">{{ data.diagnosis.summary }}</p>
+        {% if data.diagnosis.confidence %}
+        <span class="confidence-badge">{{ (data.diagnosis.confidence * 100)|int }}% confidence</span>
+        {% endif %}
+    </div>
+
+    <!-- Issues -->
+    {% if data.issues %}
+    <div class="issues-card">
+        <div class="issues-title">Issues detected</div>
+        <ul>
+            {% for issue in data.issues %}
+            <li>{{ issue }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% else %}
+    <div class="issues-card issues-card-healthy">
+        <div class="issues-title">No issues detected</div>
+        <p>Your connection to {{ data.destination }} looks healthy.</p>
+    </div>
+    {% endif %}
+
+    <!-- Suggestions -->
+    {% if data.suggestions %}
+    <div class="suggestions-card">
+        <div class="suggestions-title">What you can do</div>
+        <ul>
+            {% for suggestion in data.suggestions %}
+            <li>{{ suggestion }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    <!-- Path analysis summary -->
+    {% if data.path_analysis %}
+    <div class="path-analysis-grid">
+        <div class="path-analysis-item">
+            <span class="path-analysis-label">WiFi</span>
+            <span class="path-analysis-value">
+                {% if data.path_analysis.wifi.status == 'not_wifi' %}
+                Wired
+                {% else %}
+                {{ data.path_analysis.wifi.status|capitalize }}
+                {% if data.path_analysis.wifi.signal_dbm %}({{ data.path_analysis.wifi.signal_dbm }} dBm){% endif %}
+                {% endif %}
+            </span>
+        </div>
+        <div class="path-analysis-item">
+            <span class="path-analysis-label">Local network</span>
+            <span class="path-analysis-value">
+                {{ data.path_analysis.local_network.status|capitalize }}
+                {% if data.path_analysis.local_network.latency_ms %}({{ data.path_analysis.local_network.latency_ms }} ms){% endif %}
+            </span>
+        </div>
+        <div class="path-analysis-item">
+            <span class="path-analysis-label">DNS</span>
+            <span class="path-analysis-value">
+                {% if data.path_analysis.dns.resolution_ms %}{{ data.path_analysis.dns.resolution_ms }} ms{% else %}n/a{% endif %}
+            </span>
+        </div>
+        <div class="path-analysis-item">
+            <span class="path-analysis-label">Total latency</span>
+            <span class="path-analysis-value">
+                {% if data.path_analysis.total_latency_ms %}{{ data.path_analysis.total_latency_ms }} ms{% else %}n/a{% endif %}
+                ({{ data.path_analysis.path_hops }} hops)
+            </span>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Context notes -->
+    {% if data.context %}
+    <div class="context-notes">
+        {% for note in data.context %}
+        <p class="context-note">{{ note }}</p>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endif %}
+</div>

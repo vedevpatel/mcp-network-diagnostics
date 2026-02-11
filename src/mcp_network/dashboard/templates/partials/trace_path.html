@@ -1,0 +1,53 @@
+<div class="tool-result-friendly">
+    <div class="result-header">
+        <span class="result-title">Path to {{ data.destination }}</span>
+        {% if data.error %}
+        <span class="status-pill status-pill-degraded">Error</span>
+        {% elif data.bottleneck and data.bottleneck.hop_number %}
+        <span class="status-pill status-pill-degraded">Bottleneck detected</span>
+        {% else %}
+        <span class="status-pill status-pill-healthy">Path looks good</span>
+        {% endif %}
+    </div>
+
+    {% if data.error %}
+    <div class="issues-card">
+        <div class="issues-title">Error</div>
+        <p>{{ data.error }}</p>
+        {% if data.hint %}
+        <p class="result-hint">{{ data.hint }}</p>
+        {% endif %}
+    </div>
+    {% elif data.bottleneck and data.bottleneck.explanation %}
+    <div class="issues-card">
+        <div class="issues-title">{{ data.bottleneck.explanation }}</div>
+        <p>Hop {{ data.bottleneck.hop_number }} ({{ data.bottleneck.ip or 'unknown' }}) adds {{ data.bottleneck.latency_jump_ms }}ms delay</p>
+    </div>
+    {% else %}
+    <div class="issues-card issues-card-healthy">
+        <div class="issues-title">No bottlenecks detected</div>
+        <p>The path to {{ data.destination }} looks healthy.</p>
+    </div>
+    {% endif %}
+
+    {% if data.hops %}
+    <div class="hop-list">
+        <div class="hop-list-header">
+            <span class="hop-col-num">#</span>
+            <span class="hop-col-ip">IP Address</span>
+            <span class="hop-col-host">Hostname</span>
+            <span class="hop-col-latency">Latency</span>
+            <span class="hop-col-loss">Loss</span>
+        </div>
+        {% for hop in data.hops %}
+        <div class="hop-row {% if hop.is_bottleneck %}hop-bottleneck{% endif %}">
+            <span class="hop-col-num">{{ hop.number }}</span>
+            <span class="hop-col-ip">{{ hop.ip or '*' }}</span>
+            <span class="hop-col-host">{{ hop.hostname or '-' }}</span>
+            <span class="hop-col-latency">{{ hop.latency_ms if hop.latency_ms is not none else '?' }} ms</span>
+            <span class="hop-col-loss">{% if hop.loss_pct %}{{ hop.loss_pct }}%{% else %}-{% endif %}</span>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>

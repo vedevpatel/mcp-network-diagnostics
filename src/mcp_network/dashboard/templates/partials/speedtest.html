@@ -1,0 +1,51 @@
+<div class="tool-result-friendly">
+    <div class="result-header">
+        <span class="result-title">Speed Test Results</span>
+        {% if data.error %}
+        <span class="status-pill status-pill-degraded">Error</span>
+        {% else %}
+        <span class="status-pill status-pill-healthy">Complete</span>
+        {% endif %}
+    </div>
+
+    {% if data.error %}
+    <div class="issues-card">
+        <div class="issues-title">{{ data.error }}</div>
+        {% if data.hint %}
+        <p>{{ data.hint }}</p>
+        {% endif %}
+        {% if data.install_instructions %}
+        <div class="install-instructions">
+            <p><strong>Install speedtest-cli:</strong></p>
+            <ul>
+                {% for os, cmd in data.install_instructions.items() %}
+                <li><strong>{{ os }}:</strong> <code>{{ cmd }}</code></li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+    </div>
+    {% else %}
+    <div class="speedtest-results">
+        <div class="speedtest-card speedtest-download">
+            <div class="speedtest-label">Download</div>
+            <div class="speedtest-value">{{ data.download_mbps }} <span class="speedtest-unit">Mbps</span></div>
+        </div>
+        <div class="speedtest-card speedtest-upload">
+            <div class="speedtest-label">Upload</div>
+            <div class="speedtest-value">{{ data.upload_mbps }} <span class="speedtest-unit">Mbps</span></div>
+        </div>
+        <div class="speedtest-card speedtest-ping">
+            <div class="speedtest-label">Ping</div>
+            <div class="speedtest-value">{{ data.ping_ms }} <span class="speedtest-unit">ms</span></div>
+        </div>
+    </div>
+
+    {% if data.server %}
+    <div class="speedtest-server">
+        <span class="speedtest-server-label">Test server:</span>
+        {{ data.server.name }}{% if data.server.sponsor %} ({{ data.server.sponsor }}){% endif %}{% if data.server.country %}, {{ data.server.country }}{% endif %}
+    </div>
+    {% endif %}
+    {% endif %}
+</div>
