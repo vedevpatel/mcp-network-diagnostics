@@ -86,7 +86,7 @@ class AuthManager:
         """
         # Generate random components
         plaintext = secrets.token_urlsafe(32)
-        key_id = secrets.token_urlsafe(8)
+        key_id = secrets.token_urlsafe(8).replace("_", "-")
         key_hash = hashlib.sha256(plaintext.encode()).hexdigest()
 
         # Calculate expiration
