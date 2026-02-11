@@ -6,6 +6,9 @@ from typing import Optional
 
 from fastapi import Header, Query, HTTPException
 
+from mcp_network.security import Role
+from mcp_network.storage.tenant import set_tenant_id
+
 
 def _get_auth_manager():
     from mcp_network.security import AuthManager
@@ -47,4 +50,7 @@ def require_dashboard_auth(
     api_key_obj = auth_mgr.authenticate(key_str)
     if not api_key_obj:
         raise HTTPException(status_code=401, detail="Invalid or expired API key.")
+    # Operator/admin: scope storage and tools to this key's tenant
+    if api_key_obj.role in (Role.OPERATOR, Role.ADMIN, Role.SUPERUSER):
+        set_tenant_id(api_key_obj.tenant_id or api_key_obj.key_id)
     return api_key_obj
