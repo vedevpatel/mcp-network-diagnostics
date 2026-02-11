@@ -865,15 +865,21 @@ class EdgeCollector:
         for line in lines:
             if "avg" in line.lower() or "average" in line.lower():
                 import re
+
+                # Try slash-separated format first (Linux/macOS)
+                # e.g. round-trip min/avg/max/stddev = 3.001/4.561/7.136/1.834 ms
+                match = re.search(r'[\d.]+/(\d+(?:\.\d+)?)/[\d.]+', line)
+                if match:
+                    latency_ms = float(match.group(1))
+                    break
+
+                # Try Windows format
+                # e.g. Minimum = 2ms, Maximum = 5ms, Average = 3ms
                 if "=" in line:
                     match = re.search(r'=\s*(\d+(?:\.\d+)?)ms', line, re.IGNORECASE)
                     if match:
                         latency_ms = float(match.group(1))
-                else:
-                    match = re.search(r'[\d.]+/(\d+(?:\.\d+)?)/[\d.]+', line)
-                    if match:
-                        latency_ms = float(match.group(1))
-                break
+                    break
 
         return (latency_ms, loss_pct)
 
