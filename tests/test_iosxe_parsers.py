@@ -5,7 +5,6 @@ Covers both supported output formats for each parser, edge cases
 (garbage / empty input), and utilization arithmetic.
 """
 
-import pytest
 from mcp_network.parsers.iosxe import (
     parse_memory_summary,
     parse_cpu_usage,

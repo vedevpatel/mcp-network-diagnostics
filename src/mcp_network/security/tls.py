@@ -59,7 +59,7 @@ def generate_self_signed_cert(
     except Exception:
         pass  # Windows or permission error
 
-    print(f"✓ Generated self-signed certificate:")
+    print("✓ Generated self-signed certificate:")
     print(f"  Certificate: {cert_file}")
     print(f"  Private Key: {key_file}")
     print(f"  Hostname: {hostname}")
@@ -130,10 +130,10 @@ def generate_lets_encrypt_cert(
     cert_file = f"/etc/letsencrypt/live/{domain}/fullchain.pem"
     key_file = f"/etc/letsencrypt/live/{domain}/privkey.pem"
 
-    print(f"✓ Let's Encrypt certificate obtained:")
+    print("✓ Let's Encrypt certificate obtained:")
     print(f"  Certificate: {cert_file}")
     print(f"  Private Key: {key_file}")
-    print(f"  Renewal: Auto-renews via cron (run 'certbot renew')")
+    print("  Renewal: Auto-renews via cron (run 'certbot renew')")
 
     return cert_file, key_file
 
@@ -220,7 +220,7 @@ def check_cert_expiry(cert_file: str) -> int:
     Raises:
         subprocess.CalledProcessError: If openssl command fails
     """
-    output = subprocess.run(
+    _output = subprocess.run(
         ["openssl", "x509", "-noout", "-checkend", "0", "-in", cert_file],
         capture_output=True,
         text=True,
@@ -295,9 +295,9 @@ def generate_csr(
     except Exception:
         pass
 
-    print(f"✓ Generated CSR:")
+    print("✓ Generated CSR:")
     print(f"  CSR: {csr_file}")
     print(f"  Private Key: {key_file}")
-    print(f"  Submit CSR to your Certificate Authority")
+    print("  Submit CSR to your Certificate Authority")
 
     return str(csr_file), str(key_file)

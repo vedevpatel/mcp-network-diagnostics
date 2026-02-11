@@ -1,7 +1,6 @@
 """Rate limiting using token bucket algorithm."""
 
 import time
-from collections import defaultdict
 from dataclasses import dataclass
 from typing import Optional
 

@@ -10,9 +10,8 @@ get_path / get_device_status: exercised directly against the seeded
 import asyncio
 import json
 import random
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock
 
-import pytest
 
 
 # ---------------------------------------------------------------------------

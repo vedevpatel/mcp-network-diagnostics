@@ -1,12 +1,9 @@
 """Tests for security: middleware and production hardening."""
 
 import pytest
-from unittest.mock import Mock, AsyncMock, patch
-from pathlib import Path
 
 from mcp_network.security import (
     AuthManager,
-    APIKey,
     Role,
     SecurityMiddleware,
     create_security_middleware,

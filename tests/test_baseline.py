@@ -3,11 +3,9 @@ import asyncio
 import json
 import os
 import tempfile
-from pathlib import Path
 
-import pytest
 
-from mcp_network.baseline import BaselineStorage, BaselineSnapshot, BaselineComparison
+from mcp_network.baseline import BaselineStorage, BaselineSnapshot
 
 
 def _run(coro):

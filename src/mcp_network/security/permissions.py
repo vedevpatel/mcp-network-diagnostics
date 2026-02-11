@@ -16,6 +16,7 @@ TOOL_PERMISSIONS = {
         "record_baseline",
         "compare_to_baseline",
         "clear_baseline",
+        "scan_local_network",
     ],
     Role.OPERATOR: [
         # All consumer tools automatically included via hierarchy

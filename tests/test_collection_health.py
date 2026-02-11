@@ -7,7 +7,6 @@ import pytest
 
 from mcp_network.collectors.health import (
     DeviceHealth,
-    CollectionHealth,
     HealthTracker,
     get_health_tracker,
 )
@@ -215,7 +214,6 @@ class TestSimulatedCollectorHealthTracking:
         _reset_health()
 
     def test_refresh_records_success(self):
-        from mcp_network.collectors.health import get_health_tracker
 
         tracker = get_health_tracker()
         self.collector.refresh()
@@ -229,7 +227,6 @@ class TestSimulatedCollectorHealthTracking:
             assert health.total_attempts == 1
 
     def test_multiple_refreshes_increment_attempts(self):
-        from mcp_network.collectors.health import get_health_tracker
 
         tracker = get_health_tracker()
 

@@ -64,7 +64,6 @@ class IntentParser:
             Structured Intent
         """
         import hashlib
-        import re
 
         text = natural_language.lower()
 

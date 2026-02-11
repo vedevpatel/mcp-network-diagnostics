@@ -1,7 +1,7 @@
 """Security middleware for MCP server integration."""
 
 import time
-from typing import Optional, Callable, Any
+from typing import Optional, Callable
 from functools import wraps
 
 from .auth import AuthManager, APIKey

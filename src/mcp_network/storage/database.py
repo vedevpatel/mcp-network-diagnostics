@@ -4,7 +4,6 @@ import sqlite3
 from pathlib import Path
 from typing import Optional
 import json
-from datetime import datetime
 
 
 class Database:

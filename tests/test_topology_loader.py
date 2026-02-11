@@ -3,7 +3,6 @@ Unit tests for topology_loader: YAML loading, ${ENV_VAR} interpolation,
 and error paths.
 """
 
-import os
 import pytest
 import yaml
 

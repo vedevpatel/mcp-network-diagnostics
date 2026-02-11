@@ -14,7 +14,7 @@ from functools import wraps
 from typing import Optional, Callable
 
 from .auth import APIKey, Role
-from .permissions import Authorizer, TOOL_PERMISSIONS
+from .permissions import Authorizer
 from .validation import InputValidator, ValidationError
 from .audit import AuditLogger
 

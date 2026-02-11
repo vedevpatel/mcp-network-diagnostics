@@ -12,14 +12,15 @@ import time
 from typing import Optional
 
 # Cookie name and expiry (90 days for guest)
+
+import logging
+# from fastapi import Request, Response
+
+_session_logger = logging.getLogger(__name__)
+
 SESSION_COOKIE_NAME = "mcp_consumer_session"
 SESSION_EXPIRY_DAYS = 90
 SESSION_ID_BYTES = 32
-
-
-import logging
-
-_session_logger = logging.getLogger(__name__)
 
 
 def _get_secret() -> bytes:

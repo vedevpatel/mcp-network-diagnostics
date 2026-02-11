@@ -13,7 +13,7 @@ from mcp_network.baseline.storage import BaselineStorage
 from mcp_network.collectors.edge import EdgeCollector
 from mcp_network.tools import _analyze_edge_probe
 
-from .intents import Intent, IntentParser
+from .intents import Intent
 
 logger = logging.getLogger(__name__)
 

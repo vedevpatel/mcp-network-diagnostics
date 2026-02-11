@@ -6,11 +6,9 @@ required.  Tests verify: cache TTL semantics, query-with-fallback,
 device/link assembly from topology config.
 """
 
-import time
 from datetime import datetime, timedelta
-from unittest.mock import patch, MagicMock, PropertyMock
+from unittest.mock import patch, MagicMock
 
-import pytest
 import yaml
 
 from mcp_network.collectors.prometheus import MetricCache, PrometheusCollector

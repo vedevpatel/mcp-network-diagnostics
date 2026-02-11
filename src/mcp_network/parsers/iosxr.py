@@ -5,7 +5,7 @@ These parsers extract structured data from show command output.
 """
 
 import re
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 
 def parse_memory_summary(output: str) -> Dict[str, float]:

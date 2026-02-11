@@ -212,7 +212,7 @@ class EdgeCollector:
             else:
                 return self._parse_traceroute(stdout.decode())
 
-        except (asyncio.TimeoutError, Exception) as e:
+        except (asyncio.TimeoutError, Exception):
             # Return empty traceroute on failure
             return []
 

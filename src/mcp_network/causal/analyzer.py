@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
 
 import networkx as nx
 
@@ -148,7 +147,7 @@ def build_causal_graph(
                         # Directly connected
                         confidence = 0.7
                         evidence = [
-                            f"Directly connected devices",
+                            "Directly connected devices",
                             f"Temporal ordering ({time_delta:.1f}s apart)",
                         ]
                     elif path_length <= 3:

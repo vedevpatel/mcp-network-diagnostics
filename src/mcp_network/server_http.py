@@ -48,7 +48,6 @@ class AuthMiddleware:
             return
 
         from starlette.requests import Request
-        from starlette.responses import JSONResponse
 
         request = Request(scope)
         auth_header = request.headers.get("Authorization")
@@ -101,7 +100,6 @@ class RateLimitMiddleware:
 
         allowed, reason, retry_after = self.rate_limiter.check(key_id, limit)
         if not allowed:
-            from starlette.responses import JSONResponse
             body = json.dumps({
                 "error": "rate_limit_exceeded",
                 "message": reason or "Too many requests",

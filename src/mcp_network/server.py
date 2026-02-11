@@ -6,7 +6,12 @@ import argparse
 import os
 import logging
 import sys
+
+from mcp.server.fastmcp import FastMCP  # noqa: F401
 from mcp_network.app import mcp
+from mcp_network.collectors import configure_collector
+from mcp_network.server_http import run_http  # noqa: F401
+# import mcp_network.tools  # noqa: F401
 
 
 # log to stderr for transport
@@ -16,13 +21,11 @@ logging.basicConfig(
     stream=sys.stderr,
 )
 
-
 logger = logging.getLogger(__name__)
 
 
 # Configure collector from environment variables at module load time
 # This ensures tools are registered when mcp dev imports the module
-from mcp_network.collectors import configure_collector
 configure_collector(
     collector_type=os.getenv("MCP_NETWORK_COLLECTOR", "simulated"),
     prometheus_url=os.getenv("MCP_NETWORK_PROMETHEUS_URL", "http://localhost:9090"),
@@ -31,7 +34,7 @@ configure_collector(
 )
 
 # Import tools to register them with the mcp server
-import mcp_network.tools  # noqa: F401
+# import mcp_network.tools  # noqa: F401
 
 
 def main():

@@ -2,7 +2,6 @@
 
 import json
 import time
-from pathlib import Path
 
 import pytest
 
@@ -17,7 +16,6 @@ from mcp_network.security import (
     GlobalRateLimiter,
     CombinedRateLimiter,
     AuditLogger,
-    AuditEvent,
 )
 
 

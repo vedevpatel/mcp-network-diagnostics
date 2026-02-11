@@ -274,6 +274,8 @@ def test_baseline_storage_per_identity(monkeypatch, tmp_path):
     set_tenant_id("guest_beta")
     storage_b = _get_baseline_storage()
 
+    set_tenant_id("default")  # Reset to default
+
     assert storage_a.storage_path != storage_b.storage_path
     assert "guest_alpha" in storage_a.storage_path or "alpha" in storage_a.storage_path
     assert "guest_beta" in storage_b.storage_path or "beta" in storage_b.storage_path

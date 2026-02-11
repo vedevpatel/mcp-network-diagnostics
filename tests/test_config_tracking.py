@@ -4,7 +4,6 @@ import json
 import random
 import time
 
-import pytest
 
 from mcp_network.config import (
     ConfigSnapshot,
@@ -246,7 +245,6 @@ class TestSimulatedCollectorConfigTracking:
         _reset_config_tracker()
 
     def test_refresh_creates_snapshots(self):
-        from mcp_network.config import get_config_tracker
 
         tracker = get_config_tracker()
         self.collector.refresh()
@@ -259,7 +257,6 @@ class TestSimulatedCollectorConfigTracking:
             assert snapshot.device_id == device_id
 
     def test_config_change_injection_at_call_10(self):
-        from mcp_network.config import get_config_tracker
 
         tracker = get_config_tracker()
 

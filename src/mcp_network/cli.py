@@ -1,12 +1,9 @@
 """Command-line interface for common operations."""
 
 import sys
-import asyncio
-from typing import Optional
 from .storage.database import get_database
 from .storage.repositories import (
     DeviceRepository,
-    MetricRepository,
     IncidentRepository,
     IntentRepository,
 )

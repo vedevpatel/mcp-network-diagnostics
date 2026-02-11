@@ -3,7 +3,6 @@ import asyncio
 import json
 import random
 
-import pytest
 
 
 def _fresh_collector():

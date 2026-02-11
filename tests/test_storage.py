@@ -2,7 +2,6 @@
 
 import pytest
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
 from mcp_network.storage import (
     Database,

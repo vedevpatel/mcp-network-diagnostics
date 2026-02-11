@@ -4,14 +4,12 @@ import json
 import random
 import time
 
-import pytest
 import networkx as nx
 
 from mcp_network.causal import (
     AnomalyEvent,
     CausalEdge,
     CausalGraph,
-    RootCauseResult,
     build_causal_graph,
     identify_root_causes,
 )

@@ -6,7 +6,6 @@ Covers system-resources (CPU + memory in one command), interface brief
 error keyword).
 """
 
-import pytest
 from mcp_network.parsers.nxos import (
     parse_system_resources,
     parse_interface_brief,

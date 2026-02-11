@@ -3,7 +3,6 @@
 from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 from pathlib import Path
 
 from .routes import overview, devices, incidents, intents, settings, tools, status, developer

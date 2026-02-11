@@ -4,9 +4,12 @@ Uses Team Cymru's IP to ASN mapping service (DNS-based, free, no auth required).
 """
 
 import asyncio
-import socket
 from dataclasses import dataclass
+import logging
 from typing import Optional
+
+
+_session_logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -42,16 +45,10 @@ class BGPContext:
             query_domain = f"{reversed_ip}.origin.asn.cymru.com"
 
             # DNS TXT query
-            loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(
-                None,
-                lambda: socket.gethostbyname_ex(query_domain)
-            )
+            # The original code had a commented-out section using socket.gethostbyname_ex
+            # which is not suitable for TXT records.
+            # The current implementation uses subprocess 'host' command.
 
-            # Parse TXT record format: "ASN | IP | Registry | Allocated | AS Name"
-            # Example: "15169 | 8.8.8.8 | US | arin | GOOGLE"
-
-            # Actually, we need to do a TXT query, not A record
             # Let's use a simpler approach with subprocess dig/host
             proc = await asyncio.create_subprocess_exec(
                 "host", "-t", "TXT", query_domain,

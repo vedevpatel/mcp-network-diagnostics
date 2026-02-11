@@ -1,7 +1,6 @@
 """Tests for tool-level security guard (tool_guard.py)."""
 
 import asyncio
-import os
 import time
 import pytest
 from unittest.mock import patch, MagicMock
@@ -78,10 +77,10 @@ class TestGetCallerContext:
         with patch("mcp_network.security.tool_guard.get_http_request", return_value=mock_request, create=True):
             # Need to re-import or patch properly
             from mcp_network.security import tool_guard
-            original = None
             try:
-                from fastmcp.server.dependencies import get_http_request
-                original = get_http_request
+                # from fastmcp.server.dependencies import get_http_request
+                # original = get_http_request
+                pass
             except ImportError:
                 pass
 

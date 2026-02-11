@@ -1,6 +1,5 @@
 """Unit tests for MetricStore and MetricSeries."""
-import pytest
-from mcp_network.trends.store import MetricStore, MetricSeries, MetricSample
+from mcp_network.trends.store import MetricStore, MetricSeries
 from mcp_network.models.network import Device, Interface
 
 

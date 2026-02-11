@@ -3,7 +3,6 @@ import asyncio
 import json
 import random
 
-import pytest
 
 from mcp_network.trends.store import MetricSeries
 from mcp_network.trends.anomaly import (
@@ -315,7 +314,7 @@ class TestSimulatedAnomalyInjection:
         """R5 Gi0/0 errors should spike at call counts 12-13."""
         for _ in range(11):
             self.collector.refresh()
-        errors_before = self.collector.devices["R5"].interfaces[0].errors
+        # errors_before = self.collector.devices["R5"].interfaces[0].errors
 
         # Call 12 — error injection
         self.collector.refresh()

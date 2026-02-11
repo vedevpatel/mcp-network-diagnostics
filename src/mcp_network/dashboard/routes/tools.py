@@ -4,7 +4,7 @@ import html
 import json
 from pathlib import Path
 
-from fastapi import APIRouter, Request, Form, Depends
+from fastapi import APIRouter, Request, Depends
 from fastapi.responses import HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
 
