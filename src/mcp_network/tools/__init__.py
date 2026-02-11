@@ -2488,6 +2488,7 @@ async def create_api_key(
     expires_days: int = None,
     device_restrictions: str = None,
     rate_limit: int = None,
+    tenant_id: str = None,
 ) -> str:
     """
     Create a new API key for authenticated access.
@@ -2507,6 +2508,7 @@ async def create_api_key(
         expires_days: Optional expiration (default: never expires)
         device_restrictions: Optional comma-separated device IDs (e.g., "R1,R2,R3")
         rate_limit: Optional custom rate limit (requests/minute)
+        tenant_id: Optional tenant for operator/admin data isolation
 
     Returns:
         JSON with new API key (ONLY SHOWN ONCE) and key details
@@ -2535,8 +2537,9 @@ async def create_api_key(
             role=role_enum,
             description=description,
             expires_days=expires_days,
-            device_restrictions=device_list,
+            allowed_devices=device_list,
             rate_limit=rate_limit,
+            tenant_id=(tenant_id.strip() or None) if (tenant_id and isinstance(tenant_id, str)) else None,
         )
     except Exception as e:
         return json.dumps({
@@ -2565,7 +2568,8 @@ async def create_api_key(
             "description": api_key.description,
             "rate_limit": api_key.rate_limit,
             "expires_at": api_key.expires_at.isoformat() if api_key.expires_at else None,
-            "device_restrictions": api_key.device_restrictions,
+            "allowed_devices": api_key.allowed_devices,
+            "tenant_id": api_key.tenant_id,
         },
         "note": "Key saved to file. Read it from there, then delete the file promptly.",
         "usage": "Authorization: Bearer <key-from-file>",
@@ -2593,10 +2597,11 @@ async def list_api_keys() -> str:
             "role": api_key.role.value,
             "description": api_key.description,
             "rate_limit": api_key.rate_limit,
-            "created_at": api_key.created_at.isoformat(),
-            "expires_at": api_key.expires_at.isoformat() if api_key.expires_at else "never",
-            "device_restrictions": api_key.device_restrictions or "all",
-            "revoked": api_key.revoked,
+            "created_at": datetime.fromtimestamp(api_key.created_at, timezone.utc).isoformat(),
+            "expires_at": datetime.fromtimestamp(api_key.expires_at, timezone.utc).isoformat() if api_key.expires_at else "never",
+            "allowed_devices": api_key.allowed_devices or "all",
+            "tenant_id": api_key.tenant_id,
+            "revoked": not api_key.enabled,
         })
 
     return json.dumps({
@@ -2676,8 +2681,9 @@ async def rotate_api_key(key_id: str) -> str:
             role=old_key.role,
             description=f"{old_key.description} (rotated)",
             expires_days=(old_key.expires_at - datetime.now(timezone.utc)).days if old_key.expires_at else None,
-            device_restrictions=old_key.device_restrictions,
+            allowed_devices=old_key.allowed_devices,
             rate_limit=old_key.rate_limit,
+            tenant_id=old_key.tenant_id,
         )
     except Exception as e:
         return json.dumps({

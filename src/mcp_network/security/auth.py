@@ -41,6 +41,7 @@ class APIKey:
     allowed_devices: Optional[list[str]] = None # None = all devices
     description: str = ""
     enabled: bool = True
+    tenant_id: Optional[str] = None       # For operator/admin: isolate data per tenant
 
 
 class AuthManager:
@@ -67,6 +68,7 @@ class AuthManager:
         rate_limit: Optional[int] = None,
         allowed_tools: Optional[list[str]] = None,
         allowed_devices: Optional[list[str]] = None,
+        tenant_id: Optional[str] = None,
     ) -> tuple[str, APIKey]:
         """Generate a new API key.
 
@@ -77,6 +79,7 @@ class AuthManager:
             rate_limit: Custom rate limit (None = use default)
             allowed_tools: Subset of tools (None = all for role)
             allowed_devices: Subset of devices (None = all)
+            tenant_id: Optional tenant for operator/admin isolation
 
         Returns:
             (plaintext_key, key_object) - plaintext shown ONCE, never stored
@@ -107,6 +110,7 @@ class AuthManager:
             allowed_devices=allowed_devices,
             description=description,
             enabled=True,
+            tenant_id=tenant_id,
         )
 
         # Store key
@@ -248,6 +252,8 @@ class AuthManager:
                     key_data["allowed_tools"] = None
                 if key_data.get("allowed_devices") == []:
                     key_data["allowed_devices"] = None
+                if "tenant_id" not in key_data:
+                    key_data["tenant_id"] = None
 
                 self.keys[key_id] = APIKey(**key_data)
 
