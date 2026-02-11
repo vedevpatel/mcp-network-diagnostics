@@ -38,7 +38,46 @@ Diagnoses network issues **from your perspective** using standard tools — no d
 
 ---
 
-## New MCP Tools
+## Quick Start: Claude Desktop Integration
+
+Add the MCP server to Claude Desktop (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "network-diagnostics": {
+      "command": "/path/to/uv",
+      "args": ["--directory", "/path/to/mcp-network-diagnostics", "run", "mcp-network"]
+    }
+  }
+}
+```
+
+Restart Claude Desktop, then ask: *"Check my internet connection"* or *"Why is Zoom laggy?"*
+
+---
+
+## Transports: stdio vs HTTP
+
+The MCP server supports two transport modes:
+
+| Transport | Use Case | Command |
+|-----------|----------|---------|
+| **stdio** (default) | Claude Desktop, local MCP clients | `uv run mcp-network` |
+| **streamable-http** | Remote API access, web integrations | `uv run mcp-network --transport streamable-http --port 8000` |
+
+**stdio** is the default and what Claude Desktop uses. The config snippet above launches the server in stdio mode.
+
+**HTTP MCP** exposes the same tools over HTTP at `http://host:port/mcp`. Use this when:
+- Integrating from a remote client or web application
+- Running the MCP server as a shared service
+- Needing API key authentication (`--require-auth`)
+
+For full HTTP deployment details (auth, Docker, TLS), see the [README's HTTP MCP Deployment section](README.md#http-mcp-deployment).
+
+---
+
+## MCP Tools
 
 ### `why_is_it_slow(destination)`
 
