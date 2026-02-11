@@ -3,6 +3,7 @@ import asyncio
 import json
 import os
 import tempfile
+from unittest.mock import AsyncMock, patch
 
 
 from mcp_network.baseline import BaselineStorage, BaselineSnapshot
@@ -342,16 +343,25 @@ class TestBaselineTools:
 
     def test_record_baseline(self):
         """Test record_baseline tool."""
-        from mcp_network.tools import record_baseline
-
-        result_json = _run(record_baseline())
-        result = json.loads(result_json)
-
-        assert result["status"] == "baseline_recorded"
-        assert "metrics" in result
-        assert "gateway_latency_ms" in result["metrics"]
-        assert "dns_resolution_ms" in result["metrics"]
-        assert result["total_baseline_samples"] >= 1
+        with patch("mcp_network.collectors.edge.EdgeCollector._get_default_gateway", return_value="192.168.1.1"), \
+             patch("mcp_network.collectors.edge.EdgeCollector._ping", new_callable=AsyncMock) as mock_ping, \
+             patch("mcp_network.collectors.edge.EdgeCollector._probe_dns", new_callable=AsyncMock) as mock_dns, \
+             patch("mcp_network.collectors.edge.EdgeCollector._run_traceroute", new_callable=AsyncMock) as mock_trace:
+            
+            from mcp_network.collectors.edge import HopResult, DNSResult
+            mock_ping.return_value = (10.0, 0.0)
+            mock_trace.return_value = [HopResult(1, "192.168.1.1", "gateway", 2.0, 0.0)]
+            mock_dns.return_value = DNSResult("google.com", "8.8.8.8", 10.0)
+            
+            from mcp_network.tools import record_baseline
+            result_json = _run(record_baseline())
+            result = json.loads(result_json)
+    
+            assert result["status"] == "baseline_recorded"
+            assert "metrics" in result
+            assert "gateway_latency_ms" in result["metrics"]
+            assert "dns_resolution_ms" in result["metrics"]
+            assert result["total_baseline_samples"] >= 1
 
     def test_compare_to_baseline_insufficient_samples(self):
         """Test compare_to_baseline with insufficient data."""
@@ -369,39 +379,59 @@ class TestBaselineTools:
 
     def test_record_and_compare_workflow(self):
         """Test full workflow: record baseline then compare."""
-        from mcp_network.tools import record_baseline, compare_to_baseline, _get_baseline_storage
+        with patch("mcp_network.collectors.edge.EdgeCollector._get_default_gateway", return_value="192.168.1.1"), \
+             patch("mcp_network.collectors.edge.EdgeCollector._ping", new_callable=AsyncMock) as mock_ping, \
+             patch("mcp_network.collectors.edge.EdgeCollector._probe_dns", new_callable=AsyncMock) as mock_dns, \
+             patch("mcp_network.collectors.edge.EdgeCollector._run_traceroute", new_callable=AsyncMock) as mock_trace:
+            
+            from mcp_network.collectors.edge import HopResult, DNSResult
+            mock_ping.return_value = (10.0, 0.0)
+            mock_trace.return_value = [HopResult(1, "192.168.1.1", "gateway", 2.0, 0.0)]
+            mock_dns.return_value = DNSResult("google.com", "8.8.8.8", 10.0)
 
-        # Clear baseline
-        storage = _get_baseline_storage()
-        storage.clear_baseline()
-
-        # Record baseline 5 times
-        for _ in range(5):
-            _run(record_baseline())
-
-        # Now compare should work
-        result_json = _run(compare_to_baseline())
-        result = json.loads(result_json)
-
-        assert "error" not in result
-        assert "overall_status" in result
-        assert "comparisons" in result
-        assert result["baseline_samples"] == 5
+            from mcp_network.tools import record_baseline, compare_to_baseline, _get_baseline_storage
+    
+            # Clear baseline
+            storage = _get_baseline_storage()
+            storage.clear_baseline()
+    
+            # Record baseline 5 times
+            for _ in range(5):
+                _run(record_baseline())
+    
+            # Now compare should work
+            result_json = _run(compare_to_baseline())
+            result = json.loads(result_json)
+    
+            assert "error" not in result
+            assert "overall_status" in result
+            assert "comparisons" in result
+            assert result["baseline_samples"] == 5
 
     def test_clear_baseline_tool(self):
         """Test clear_baseline tool."""
-        from mcp_network.tools import record_baseline, clear_baseline, _get_baseline_storage
+        with patch("mcp_network.collectors.edge.EdgeCollector._get_default_gateway", return_value="192.168.1.1"), \
+             patch("mcp_network.collectors.edge.EdgeCollector._ping", new_callable=AsyncMock) as mock_ping, \
+             patch("mcp_network.collectors.edge.EdgeCollector._probe_dns", new_callable=AsyncMock) as mock_dns, \
+             patch("mcp_network.collectors.edge.EdgeCollector._run_traceroute", new_callable=AsyncMock) as mock_trace:
+            
+            from mcp_network.collectors.edge import HopResult, DNSResult
+            mock_ping.return_value = (10.0, 0.0)
+            mock_trace.return_value = [HopResult(1, "192.168.1.1", "gateway", 2.0, 0.0)]
+            mock_dns.return_value = DNSResult("google.com", "8.8.8.8", 10.0)
 
-        # Record some data
-        _run(record_baseline())
-        _run(record_baseline())
-
-        storage = _get_baseline_storage()
-        assert len(storage.snapshots) >= 2
-
-        # Clear
-        result_json = _run(clear_baseline())
-        result = json.loads(result_json)
-
-        assert result["status"] == "baseline_cleared"
-        assert len(storage.snapshots) == 0
+            from mcp_network.tools import record_baseline, clear_baseline, _get_baseline_storage
+    
+            # Record some data
+            _run(record_baseline())
+            _run(record_baseline())
+    
+            storage = _get_baseline_storage()
+            assert len(storage.snapshots) >= 2
+    
+            # Clear
+            result_json = _run(clear_baseline())
+            result = json.loads(result_json)
+    
+            assert result["status"] == "baseline_cleared"
+            assert len(storage.snapshots) == 0

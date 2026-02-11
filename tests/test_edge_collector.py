@@ -119,17 +119,30 @@ class TestEdgeCollector:
 
     def test_traceroute(self):
         """Test traceroute collection."""
-        # This may take a while
-        hops = _run(self.collector._run_traceroute("8.8.8.8"))
-
-        # Should get at least a few hops
-        # (may be empty if traceroute/mtr not installed)
-        assert isinstance(hops, list)
+        with patch("mcp_network.collectors.edge.asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_proc:
+            mock_stdout = AsyncMock()
+            mock_stdout.communicate.return_value = (b"", b"")
+            mock_proc.return_value.communicate = mock_stdout.communicate
+            
+            hops = _run(self.collector._run_traceroute("8.8.8.8"))
+            # Should get at least a few hops
+            # (may be empty if traceroute/mtr not installed)
+            assert isinstance(hops, list)
 
     def test_probe_destination_basic(self):
         """Test full destination probe."""
         # Use a reliable target
-        probe = _run(self.collector.probe_destination("google.com"))
+        with patch.object(self.collector, "_get_default_gateway", return_value="192.168.1.1"), \
+             patch.object(self.collector, "_ping", new_callable=AsyncMock) as mock_ping, \
+             patch.object(self.collector, "_probe_dns", new_callable=AsyncMock) as mock_dns, \
+             patch.object(self.collector, "_run_traceroute", new_callable=AsyncMock) as mock_trace:
+            
+            from mcp_network.collectors.edge import HopResult, DNSResult
+            mock_ping.return_value = (10.0, 0.0)
+            mock_trace.return_value = [HopResult(1, "192.168.1.1", "gateway", 2.0, 0.0)]
+            mock_dns.return_value = DNSResult("google.com", "8.8.8.8", 10.0)
+            
+            probe = _run(self.collector.probe_destination("google.com"))
 
         assert probe.target == "google.com"
         assert probe.gateway is not None
@@ -163,35 +176,42 @@ class TestEdgeTools:
         assert "internet" in result["layers"]
 
     def test_trace_path(self):
-        """Test path tracing tool."""
-        from mcp_network.tools import trace_path
-
-        result_json = _run(trace_path("8.8.8.8"))
-        result = json.loads(result_json)
-
-        assert "destination" in result
-        assert result["destination"] == "8.8.8.8"
-
-        # Should have hops or an error
-        assert "hops" in result or "error" in result
+        """Test trace_path tool."""
+        # Use patch to prevent actual network calls
+        with patch("mcp_network.collectors.edge.EdgeCollector._run_traceroute", new_callable=AsyncMock) as mock_trace:
+            from mcp_network.collectors.edge import HopResult
+            mock_trace.return_value = [HopResult(1, "192.168.1.1", "gateway", 2.0, 0.0)]
+            
+            from mcp_network.tools import trace_path
+            result = _run(trace_path("8.8.8.8"))
+            assert "hops" in json.loads(result)
 
     def test_why_is_it_slow(self):
-        """Test slowness diagnosis tool."""
-        from mcp_network.tools import why_is_it_slow
+        """Test why_is_it_slow tool."""
+        # Mock all the internal calls
+        with patch("mcp_network.collectors.edge.EdgeCollector._ping", new_callable=AsyncMock) as mock_ping, \
+             patch("mcp_network.collectors.edge.EdgeCollector._run_traceroute", new_callable=AsyncMock) as mock_trace, \
+             patch("mcp_network.collectors.edge.EdgeCollector._get_default_gateway", return_value="192.168.1.1"), \
+             patch("mcp_network.collectors.edge.EdgeCollector.scan_local_network", new_callable=AsyncMock) as mock_scan:
+            
+            mock_ping.return_value = (10.0, 0.0)
+            mock_trace.return_value = []
+            mock_scan.return_value = []
+            
+            from mcp_network.tools import why_is_it_slow
+            result_json = _run(why_is_it_slow("google.com"))
+            result = json.loads(result_json)
 
-        result_json = _run(why_is_it_slow("google.com"))
-        result = json.loads(result_json)
+            assert "destination" in result
+            assert result["destination"] == "google.com"
 
-        assert "destination" in result
-        assert result["destination"] == "google.com"
+            # Should have diagnosis or error
+            assert "diagnosis" in result or "error" in result
 
-        # Should have diagnosis or error
-        assert "diagnosis" in result or "error" in result
-
-        if "diagnosis" in result:
-            assert "bottleneck" in result["diagnosis"]
-            assert "confidence" in result["diagnosis"]
-            assert "suggestions" in result
+            if "diagnosis" in result:
+                assert "bottleneck" in result["diagnosis"]
+                assert "confidence" in result["diagnosis"]
+                assert "suggestions" in result
 
 
 class TestWifiDetectionPerOS:

@@ -132,31 +132,37 @@ class AuthManager:
         """
         # Validate format
         if not provided_key.startswith("mcp_"):
+            print(f"DEBUG: Invalid prefix: {provided_key}")
             return None
 
         parts = provided_key.split("_", 2)
         if len(parts) != 3:
+            print(f"DEBUG: Invalid format: {provided_key}")
             return None
 
         _, key_id, secret = parts
 
         # Find key
         if key_id not in self.keys:
+            print(f"DEBUG: Key ID {key_id} not found in {list(self.keys.keys())}")
             return None
 
         api_key = self.keys[key_id]
 
         # Check if enabled
         if not api_key.enabled:
+            print("DEBUG: Key disabled")
             return None
 
         # Check expiration
         if api_key.expires_at and time.time() > api_key.expires_at:
+            print(f"DEBUG: Key expired: {api_key.expires_at} < {time.time()}")
             return None
 
         # Verify hash (constant-time comparison)
         provided_hash = hashlib.sha256(secret.encode()).hexdigest()
         if not secrets.compare_digest(provided_hash, api_key.key_hash):
+            print(f"DEBUG: Hash mismatch. Provided: {provided_hash}, Stored: {api_key.key_hash}")
             return None
 
         return api_key
