@@ -1634,17 +1634,30 @@ def _generate_suggestions(bottleneck: str, probe) -> list[str]:
 # Consumer Mode: Baseline & History (Phase 2)
 # ============================================================================
 
-# Module-level baseline storage
-_baseline_storage = None
+# Per-identity baseline storage (keyed by tenant_id from context)
+_baseline_storage_cache: dict = {}
+
+
+def _safe_tenant_for_path(tenant_id: str) -> str:
+    """Sanitize tenant_id for use in file paths."""
+    return "".join(c if c.isalnum() or c in "-_" else "_" for c in tenant_id)
 
 
 def _get_baseline_storage():
-    """Get or create baseline storage singleton."""
-    global _baseline_storage
-    if _baseline_storage is None:
-        from mcp_network.baseline import BaselineStorage
-        _baseline_storage = BaselineStorage()
-    return _baseline_storage
+    """Get baseline storage for current tenant/identity (from context)."""
+    from mcp_network.baseline import BaselineStorage
+    from mcp_network.storage.tenant import get_tenant_id
+    from pathlib import Path
+
+    tenant_id = get_tenant_id()
+    key = _safe_tenant_for_path(tenant_id)
+    if key not in _baseline_storage_cache:
+        home = Path.home()
+        storage_dir = home / ".mcp_network" / "baselines"
+        storage_dir.mkdir(parents=True, exist_ok=True)
+        storage_path = str(storage_dir / f"edge_baseline_{key}.json")
+        _baseline_storage_cache[key] = BaselineStorage(storage_path=storage_path)
+    return _baseline_storage_cache[key]
 
 
 @mcp.tool()

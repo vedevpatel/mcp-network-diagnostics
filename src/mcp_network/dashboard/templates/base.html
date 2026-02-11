@@ -54,6 +54,17 @@
             color: #e6edf3;
         }
 
+        .nav-identity {
+            margin-left: auto;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 14px;
+            color: #8b949e;
+        }
+        .nav-identity .guest-label { color: #8b949e; }
+        .nav-identity a.sign-in { color: #58a6ff; }
+
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -196,6 +207,14 @@
                 <a href="/intents" class="{% if '/intents' in request.url.path %}active{% endif %}">Intents</a>
                 <a href="/developer" class="{% if '/developer' in request.url.path %}active{% endif %}">Developer</a>
                 <a href="/settings" class="{% if '/settings' in request.url.path %}active{% endif %}">Settings</a>
+                <div class="nav-identity">
+                    {% if request.state.consumer_identity %}
+                    <span class="guest-label">Using as guest</span>
+                    <a href="#" class="sign-in">Sign in</a>
+                    {% else %}
+                    <a href="/" class="sign-in">Continue as guest</a>
+                    {% endif %}
+                </div>
             </nav>
             <div id="system-status" class="system-status-wrap" hx-get="/partials/status" hx-trigger="load, every 15s" hx-swap="innerHTML">
                 <div class="system-status-bar" role="status"><span class="system-status-value">Loading…</span></div>

@@ -23,15 +23,13 @@ def test_db(tmp_path):
 
 @pytest.fixture
 def client(test_db, monkeypatch):
-    """Create test client with mocked database."""
-    # Mock the get_database function to return our test database
+    """Create test client with mocked database and tenant=default for test data."""
+    from mcp_network.storage.tenant import set_tenant_id
+
     def mock_get_database():
         return test_db
 
-    monkeypatch.setattr(
-        "mcp_network.dashboard.routes.overview.get_database",
-        mock_get_database
-    )
+    # Overview does not use get_database (it uses check_my_connection). Patch only routes that do.
     monkeypatch.setattr(
         "mcp_network.dashboard.routes.devices.get_database",
         mock_get_database
@@ -43,6 +41,14 @@ def client(test_db, monkeypatch):
     monkeypatch.setattr(
         "mcp_network.dashboard.routes.intents.get_database",
         mock_get_database
+    )
+    # Use tenant "default" so repo queries see test data (saved with tenant_id="default")
+    original_set_tenant = set_tenant_id
+    def _set_default_tenant(identity):
+        original_set_tenant("default")
+    monkeypatch.setattr(
+        "mcp_network.dashboard.app.set_tenant_id",
+        _set_default_tenant,
     )
 
     app = create_app()
@@ -105,11 +111,12 @@ def sample_incidents(test_db):
 
 
 def test_overview_page(client, sample_devices, sample_incidents):
-    """Test overview page loads."""
+    """Test overview page loads with My Connection dashboard."""
     response = client.get("/")
     assert response.status_code == 200
     assert b"MCP Network Diagnostics" in response.content
-    assert b"Network Health" in response.content
+    # Overview now shows "My Connection" with connection cards (Gateway, DNS, Internet)
+    assert b"Gateway" in response.content or b"My Connection" in response.content
 
 
 def test_devices_page(client, sample_devices):
@@ -157,9 +164,9 @@ def test_settings_page(client):
     assert b"Settings" in response.content
 
 
-def test_incidents_partial(client, sample_incidents):
-    """Test HTMX partial for incidents."""
-    response = client.get("/partials/incidents")
+def test_connection_partial(client):
+    """Test HTMX partial for connection status."""
+    response = client.get("/partials/connection")
     assert response.status_code == 200
     # Should be a fragment, not full page
     assert b"<html" not in response.content

@@ -1,11 +1,42 @@
 """FastAPI application for web dashboard."""
 
+from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pathlib import Path
 
 from .routes import overview, devices, incidents, intents, settings, tools, status, developer
+from mcp_network.storage.tenant import set_tenant_id
+
+from .session import (
+    SESSION_COOKIE_NAME,
+    SESSION_EXPIRY_DAYS,
+    get_or_create_consumer_identity,
+)
+
+
+class ConsumerSessionMiddleware(BaseHTTPMiddleware):
+    """Ensures consumer_identity on request.state (guest session from signed cookie)."""
+
+    async def dispatch(self, request, call_next):
+        cookie_value = request.cookies.get(SESSION_COOKIE_NAME)
+        identity, new_cookie = get_or_create_consumer_identity(cookie_value)
+        request.state.consumer_identity = identity
+        set_tenant_id(identity)
+        if new_cookie:
+            request.state._set_session_cookie = new_cookie
+        response = await call_next(request)
+        if getattr(request.state, "_set_session_cookie", None):
+            response.set_cookie(
+                SESSION_COOKIE_NAME,
+                request.state._set_session_cookie,
+                max_age=SESSION_EXPIRY_DAYS * 86400,
+                httponly=True,
+                samesite="lax",
+                path="/",
+            )
+        return response
 
 
 def create_app() -> FastAPI:
@@ -19,6 +50,9 @@ def create_app() -> FastAPI:
         description="Real-time network monitoring and diagnostics",
         version="1.0.0",
     )
+
+    # Consumer session (guest identity) – runs first so routes see request.state.consumer_identity
+    app.add_middleware(ConsumerSessionMiddleware)
 
     # Mount static files
     static_path = Path(__file__).parent / "static"

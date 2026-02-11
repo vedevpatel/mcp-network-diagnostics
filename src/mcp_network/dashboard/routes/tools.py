@@ -4,10 +4,14 @@ import html
 from pathlib import Path
 
 from fastapi import APIRouter, Request, Form, Depends
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from mcp_network.dashboard.auth_deps import require_dashboard_auth
+from mcp_network.dashboard.consumer_limits import check_consumer_rate_limit
+from mcp_network.security.validation import InputValidator, ValidationError
+
+_validator = InputValidator()
 
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
@@ -113,6 +117,17 @@ async def tools_page(request: Request, _auth=Depends(require_dashboard_auth)):
 @router.post("/invoke", response_class=HTMLResponse)
 async def invoke_tool(request: Request, _auth=Depends(require_dashboard_auth)):
     """Invoke a tool by id with form params; return HTML fragment for output."""
+    identity = getattr(request.state, "consumer_identity", None)
+    if identity:
+        allowed, retry_after = check_consumer_rate_limit(identity)
+        if not allowed:
+            return Response(
+                content=_render_error_fragment(
+                    f"Rate limit exceeded. Try again in {int(retry_after)} seconds."
+                ),
+                status_code=429,
+                media_type="text/html",
+            )
     form_dict = dict(await request.form())
     tool_id = form_dict.pop("tool_id", None)
     if not tool_id:
@@ -127,6 +142,19 @@ async def invoke_tool(request: Request, _auth=Depends(require_dashboard_auth)):
         return _render_error_fragment(f"Tool not found: {tool_id}")
 
     kwargs = _build_kwargs(tool_def, form_dict)
+
+    # Validate consumer-facing inputs (destination, goal, etc.)
+    try:
+        if "destination" in kwargs:
+            kwargs["destination"] = _validator.validate_destination(kwargs["destination"])
+        if "goal" in kwargs:
+            kwargs["goal"] = _validator.validate_intent(kwargs["goal"])
+        if "device_id" in kwargs:
+            kwargs["device_id"] = _validator.validate_device_id(kwargs["device_id"])
+        if "command" in kwargs:
+            kwargs["command"] = _validator.validate_command(kwargs["command"])
+    except ValidationError as e:
+        return _render_error_fragment(str(e))
 
     try:
         result = await fn(**kwargs)
