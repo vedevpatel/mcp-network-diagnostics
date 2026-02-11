@@ -16,11 +16,12 @@ Diagnose enterprise networks by connecting to routers and switches:
 
 ### Consumer Mode (Edge Diagnostics)
 Diagnose your home/office network without device access:
+- **Web dashboard** – Browser UI with "My Connection" overview, consumer tools, guest sessions, and per-identity baselines
 - Gateway health checks
 - DNS resolution timing
 - Traceroute with hop analysis
 - WiFi signal quality (macOS/Linux/Windows)
-- Baseline tracking with anomaly detection
+- Baseline tracking with anomaly detection (per-identity when using the dashboard)
 - Provider context (BGP/AS lookup, outage correlation)
 - Continuous monitoring agent with intent system
 - Speedtest integration
@@ -35,6 +36,23 @@ git clone https://github.com/vedevpatel/mcp-network-diagnostics.git
 cd mcp-network-diagnostics
 uv sync
 ```
+
+### Web Dashboard (Consumer UI)
+
+Run the dashboard for a browser-based "check my connection" experience—no MCP or API key required:
+
+```bash
+uv run python -m mcp_network.dashboard
+# Open http://localhost:8080
+```
+
+- **Overview** – "My Connection" live status (gateway, DNS, latency).
+- **Tools** – Consumer tools (Check my connection, Trace path, Why is it slow?, Record/compare baseline, etc.) plus operator and agent tools when configured.
+- **Guest session** – A signed cookie identifies your session; baselines and data are scoped per identity. Header shows "Using as guest" (optional "Sign in" for future use).
+- **Rate limits** – Per-guest limit (default 60 requests/min). Set `CONSUMER_RATE_LIMIT_PER_MINUTE` to override.
+- **Optional auth** – Set `MCP_NETWORK_DASHBOARD_REQUIRE_AUTH=1` to require an API key for Tools and Settings.
+
+With Docker: `docker compose up -d` then open http://localhost:8080.
 
 ### Consumer Mode (No Setup Required)
 
@@ -265,6 +283,12 @@ ruff check src/
 
 ```
 src/mcp_network/
+├── dashboard/           # Web UI (consumer + operator views)
+│   ├── app.py           # FastAPI app, session middleware
+│   ├── session.py       # Guest session (signed cookie)
+│   ├── consumer_limits.py  # Per-identity rate limits
+│   ├── routes/          # Overview, tools, devices, incidents, etc.
+│   └── templates/       # Jinja2 HTML
 ├── collectors/          # Data collection backends
 │   ├── simulated.py     # Fake topology for testing
 │   ├── ssh.py           # Cisco SSH collector
