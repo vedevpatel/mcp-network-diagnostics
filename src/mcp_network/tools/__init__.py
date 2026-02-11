@@ -8,6 +8,9 @@ import time
 from datetime import datetime, timezone, timedelta
 from mcp_network.app import mcp
 from mcp_network.collectors import get_network
+from mcp_network.security.auth import Role
+from mcp_network.security.tool_guard import guarded
+from mcp_network.storage.tenant import get_tenant_id
 from mcp_network.graph.pathfinder import find_path, get_path_details, calculate_total_latency, find_alternate_paths
 from mcp_network.trends.store import MetricStore
 from mcp_network.trends.analyzer import analyze_trend
@@ -27,6 +30,27 @@ _ANOMALY_DEFAULTS = {
     "volatility_ratio_threshold": 3.0,
     "min_samples": 5,
 }
+
+# ===========================================================================
+# Tenant-scoped instance caches (replaces module-level singletons)
+# ===========================================================================
+
+_MAX_TENANTS = 100
+
+
+def _get_for_tenant(cache: dict, factory_fn, tenant_id: str = None):
+    """Return or create a tenant-scoped instance, with LRU eviction."""
+    if tenant_id is None:
+        tenant_id = get_tenant_id()
+    if tenant_id in cache:
+        return cache[tenant_id]
+    # Evict oldest if at capacity
+    if len(cache) >= _MAX_TENANTS:
+        oldest = next(iter(cache))
+        del cache[oldest]
+    instance = factory_fn()
+    cache[tenant_id] = instance
+    return instance
 
 # Module-level metric history — persists across tool calls within a session
 _metric_store = MetricStore()
@@ -118,6 +142,7 @@ def _get_trend_indicators(device_id: str, thresholds: dict) -> list[dict]:
 
 
 @mcp.tool()
+@guarded(min_role=Role.OPERATOR)
 async def get_path(src_device: str, dst_device: str) -> str:
     """
     Get the network path between two devices.
@@ -163,6 +188,7 @@ async def get_path(src_device: str, dst_device: str) -> str:
 
 
 @mcp.tool()
+@guarded(min_role=Role.OPERATOR)
 async def get_device_status(device_id: str) -> str:
     """
     Get detailed status for a specific network device.
@@ -252,6 +278,7 @@ async def get_device_status(device_id: str) -> str:
 
 
 @mcp.tool()
+@guarded(min_role=Role.OPERATOR)
 async def list_devices() -> str:
     """
     List all devices in the network topology.
@@ -290,6 +317,7 @@ async def list_devices() -> str:
 
 
 @mcp.tool()
+@guarded(min_role=Role.OPERATOR)
 async def diagnose_latency(src_device: str, dst_device: str) -> str:
     """
     Diagnose latency issues between two devices w/ root cause analysis.
@@ -473,6 +501,7 @@ def _generate_recommendation(findings: list[dict], alternate: dict | None = None
 
 
 @mcp.tool()
+@guarded(min_role=Role.OPERATOR)
 async def predict_path_health(
     src_device: str,
     dst_device: str,
@@ -659,6 +688,7 @@ async def predict_path_health(
 
 
 @mcp.tool()
+@guarded(min_role=Role.OPERATOR)
 async def detect_anomalies() -> str:
     """
     Detect unusual metric behavior across the network.
@@ -730,6 +760,7 @@ async def detect_anomalies() -> str:
 
 
 @mcp.tool()
+@guarded(min_role=Role.OPERATOR)
 async def diagnose_from_here(dst_device: str) -> str:
     """
     Diagnose latency from the local device to a destination.
@@ -757,6 +788,7 @@ async def diagnose_from_here(dst_device: str) -> str:
 
 
 @mcp.tool()
+@guarded(min_role=Role.OPERATOR)
 async def run_command(device_id: str, command: str) -> str:
     """
     Run a show command on a device and return the raw output.
@@ -776,10 +808,46 @@ async def run_command(device_id: str, command: str) -> str:
     Returns:
         Raw command output as a string, or a JSON error.
     """
-    if not command.strip().lower().startswith("show"):
+    import re as _re
+
+    command = command.strip()
+
+    # Reject control characters that could inject additional CLI lines
+    _FORBIDDEN_CHARS = set('\n\r\x00')
+    if any(c in command for c in _FORBIDDEN_CHARS):
         return json.dumps({
-            "error": "Only 'show' commands are permitted. This server is read-only.",
+            "error": "Command contains forbidden control characters (newline, carriage return, null byte).",
+        }, indent=2)
+
+    # Length limit
+    if len(command) > 500:
+        return json.dumps({
+            "error": "Command too long (max 500 characters).",
+        }, indent=2)
+
+    # Allowlist: must start with a read-only command keyword
+    if not _re.match(r'^(show|display|ping|traceroute)\s+', command, _re.IGNORECASE):
+        return json.dumps({
+            "error": "Only read-only commands are permitted (show, display, ping, traceroute).",
             "command": command,
+        }, indent=2)
+
+    # Blocklist: reject commands containing dangerous keywords anywhere
+    _DANGEROUS_KEYWORDS = [
+        "config", "conf ", "write", "copy", "delete", "erase",
+        "reload", "shutdown", "exec", "terminal", "debug",
+    ]
+    command_lower = command.lower()
+    for keyword in _DANGEROUS_KEYWORDS:
+        if keyword in command_lower:
+            return json.dumps({
+                "error": f"Command contains forbidden keyword '{keyword.strip()}'.",
+            }, indent=2)
+
+    # Shell metacharacter check (defense-in-depth; also caught by InputValidator)
+    if _re.search(r'[;&|`$]', command):
+        return json.dumps({
+            "error": "Command contains forbidden shell metacharacters.",
         }, indent=2)
 
     network = get_network()
@@ -791,7 +859,7 @@ async def run_command(device_id: str, command: str) -> str:
         }, indent=2)
 
     try:
-        output = network.run_command(device_id, command.strip())
+        output = network.run_command(device_id, command)
         return json.dumps({
             "device_id": device_id,
             "command": command.strip(),
@@ -807,6 +875,7 @@ async def run_command(device_id: str, command: str) -> str:
 # ============================================================================
 
 @mcp.tool()
+@guarded(min_role=Role.OPERATOR)
 async def get_collection_health() -> str:
     """
     Get data collection health status for all devices.
@@ -871,6 +940,7 @@ async def get_collection_health() -> str:
 # ============================================================================
 
 @mcp.tool()
+@guarded(min_role=Role.OPERATOR)
 async def collect_device_configs() -> str:
     """
     Collect configuration snapshots from all devices.
@@ -938,6 +1008,7 @@ async def collect_device_configs() -> str:
 
 
 @mcp.tool()
+@guarded(min_role=Role.OPERATOR)
 async def get_config_history(device_id: str, limit: int = 10) -> str:
     """
     Get configuration change history for a device.
@@ -957,6 +1028,8 @@ async def get_config_history(device_id: str, limit: int = 10) -> str:
         - change_count: Total changes tracked
     """
     from mcp_network.config import get_config_tracker
+
+    limit = min(limit, 10000)
 
     config_tracker = get_config_tracker()
     changes = config_tracker.get_change_history(device_id, limit=limit)
@@ -982,6 +1055,7 @@ async def get_config_history(device_id: str, limit: int = 10) -> str:
 
 
 @mcp.tool()
+@guarded(min_role=Role.OPERATOR)
 async def compare_configs(device_id: str, time_a: str, time_b: str) -> str:
     """
     Compare device configurations at two points in time.
@@ -1043,6 +1117,7 @@ async def compare_configs(device_id: str, time_a: str, time_b: str) -> str:
 
 
 @mcp.tool()
+@guarded(min_role=Role.OPERATOR)
 async def check_config_correlation(device_id: str, window_seconds: float = 1800.0) -> str:
     """
     Check if device had config changes recently that might correlate with anomalies.
@@ -1088,6 +1163,7 @@ async def check_config_correlation(device_id: str, window_seconds: float = 1800.
 # ============================================================================
 
 @mcp.tool()
+@guarded(min_role=Role.OPERATOR)
 async def explain_incident(context: str = "all") -> str:
     """
     Perform causal root cause analysis on recent anomalies.
@@ -1252,6 +1328,7 @@ async def explain_incident(context: str = "all") -> str:
 # ============================================================================
 
 @mcp.tool()
+@guarded()
 async def why_is_it_slow(destination: str) -> str:
     """
     Diagnose why a destination (website, server, etc.) is slow.
@@ -1287,6 +1364,7 @@ async def why_is_it_slow(destination: str) -> str:
 
 
 @mcp.tool()
+@guarded()
 async def check_my_connection() -> str:
     """
     Quick health check of your internet connection.
@@ -1369,6 +1447,7 @@ async def check_my_connection() -> str:
 
 
 @mcp.tool()
+@guarded()
 async def trace_path(destination: str) -> str:
     """
     Show the network path to a destination with latency per hop.
@@ -1661,6 +1740,7 @@ def _get_baseline_storage():
 
 
 @mcp.tool()
+@guarded()
 async def record_baseline() -> str:
     """
     Record current network state as baseline measurement.
@@ -1716,6 +1796,7 @@ async def record_baseline() -> str:
 
 
 @mcp.tool()
+@guarded()
 async def compare_to_baseline() -> str:
     """
     Compare current network performance to historical baseline.
@@ -1809,6 +1890,7 @@ async def compare_to_baseline() -> str:
 
 
 @mcp.tool()
+@guarded()
 async def clear_baseline() -> str:
     """
     Clear all baseline data and start fresh.
@@ -1829,6 +1911,7 @@ async def clear_baseline() -> str:
 
 
 @mcp.tool()
+@guarded()
 async def run_speedtest() -> str:
     """
     Run a bandwidth speed test to measure download/upload speeds.
@@ -1924,11 +2007,12 @@ async def run_speedtest() -> str:
 # Agent Control Tools
 # ============================================================================
 
-# Module-level agent instance (singleton)
-_agent_instance = None
+# Tenant-scoped agent instances
+_agent_instances: dict = {}
 
 
 @mcp.tool()
+@guarded(min_role=Role.ADMIN)
 async def start_agent(poll_interval_seconds: int = 60) -> str:
     """
     Start the continuous network monitoring agent.
@@ -1947,7 +2031,12 @@ async def start_agent(poll_interval_seconds: int = 60) -> str:
     """
     from mcp_network.agent import NetworkAgent, AgentConfig
 
-    global _agent_instance
+    # Bound: minimum 10s poll interval, maximum 1 hour
+    poll_interval_seconds = max(poll_interval_seconds, 10)
+    poll_interval_seconds = min(poll_interval_seconds, 3600)
+
+    tenant = get_tenant_id()
+    _agent_instance = _agent_instances.get(tenant)
 
     if _agent_instance and _agent_instance.running:
         return json.dumps({
@@ -1958,6 +2047,7 @@ async def start_agent(poll_interval_seconds: int = 60) -> str:
 
     config = AgentConfig(poll_interval=float(poll_interval_seconds))
     _agent_instance = NetworkAgent(config)
+    _agent_instances[tenant] = _agent_instance
     await _agent_instance.start()
 
     return json.dumps({
@@ -1969,6 +2059,7 @@ async def start_agent(poll_interval_seconds: int = 60) -> str:
 
 
 @mcp.tool()
+@guarded(min_role=Role.ADMIN)
 async def stop_agent() -> str:
     """
     Stop the continuous network monitoring agent.
@@ -1976,7 +2067,8 @@ async def stop_agent() -> str:
     Returns:
         JSON with final status
     """
-    global _agent_instance
+    tenant = get_tenant_id()
+    _agent_instance = _agent_instances.get(tenant)
 
     if not _agent_instance or not _agent_instance.running:
         return json.dumps({
@@ -1997,6 +2089,7 @@ async def stop_agent() -> str:
 
 
 @mcp.tool()
+@guarded(min_role=Role.ADMIN)
 async def set_intent(goal: str, priority: int = 5) -> str:
     """
     Add a network monitoring goal in natural language.
@@ -2020,7 +2113,8 @@ async def set_intent(goal: str, priority: int = 5) -> str:
     """
     from mcp_network.agent import IntentParser
 
-    global _agent_instance
+    tenant = get_tenant_id()
+    _agent_instance = _agent_instances.get(tenant)
 
     # Parse the intent
     parser = IntentParser()
@@ -2031,6 +2125,7 @@ async def set_intent(goal: str, priority: int = 5) -> str:
     if not _agent_instance or not _agent_instance.running:
         from mcp_network.agent import NetworkAgent, AgentConfig
         _agent_instance = NetworkAgent(AgentConfig())
+        _agent_instances[tenant] = _agent_instance
         await _agent_instance.start()
 
     # Add to agent
@@ -2053,6 +2148,7 @@ async def set_intent(goal: str, priority: int = 5) -> str:
 
 
 @mcp.tool()
+@guarded(min_role=Role.ADMIN)
 async def list_intents() -> str:
     """
     List all registered monitoring intents.
@@ -2060,7 +2156,7 @@ async def list_intents() -> str:
     Returns:
         JSON with all active intents
     """
-    global _agent_instance
+    _agent_instance = _agent_instances.get(get_tenant_id())
 
     if not _agent_instance:
         return json.dumps({
@@ -2091,6 +2187,7 @@ async def list_intents() -> str:
 
 
 @mcp.tool()
+@guarded(min_role=Role.ADMIN)
 async def remove_intent(intent_id: str) -> str:
     """
     Remove a monitoring intent by ID.
@@ -2101,7 +2198,7 @@ async def remove_intent(intent_id: str) -> str:
     Returns:
         JSON with removal status
     """
-    global _agent_instance
+    _agent_instance = _agent_instances.get(get_tenant_id())
 
     if not _agent_instance:
         return json.dumps({
@@ -2119,6 +2216,7 @@ async def remove_intent(intent_id: str) -> str:
 
 
 @mcp.tool()
+@guarded(min_role=Role.ADMIN)
 async def get_incidents(limit: int = 10) -> str:
     """
     Get recent network incidents detected by the agent.
@@ -2129,7 +2227,9 @@ async def get_incidents(limit: int = 10) -> str:
     Returns:
         JSON with recent incidents
     """
-    global _agent_instance
+    limit = min(limit, 10000)
+
+    _agent_instance = _agent_instances.get(get_tenant_id())
 
     if not _agent_instance:
         return json.dumps({
@@ -2161,6 +2261,7 @@ async def get_incidents(limit: int = 10) -> str:
 
 
 @mcp.tool()
+@guarded(min_role=Role.ADMIN)
 async def agent_status() -> str:
     """
     Get current status of the monitoring agent.
@@ -2168,7 +2269,7 @@ async def agent_status() -> str:
     Returns:
         JSON with agent status, uptime, and statistics
     """
-    global _agent_instance
+    _agent_instance = _agent_instances.get(get_tenant_id())
 
     if not _agent_instance:
         return json.dumps({
@@ -2197,11 +2298,12 @@ async def agent_status() -> str:
 # Autonomous Agent Tools (Leap 3)
 # ============================================================================
 
-# Module-level autonomous agent instance
-_autonomous_agent = None
+# Tenant-scoped autonomous agent instances
+_autonomous_agents: dict = {}
 
 
 @mcp.tool()
+@guarded(min_role=Role.ADMIN)
 async def plan_goal(goal: str) -> str:
     """
     Generate an action plan for a natural language network goal.
@@ -2224,10 +2326,12 @@ async def plan_goal(goal: str) -> str:
     from mcp_network.agent import AutonomousAgent
     import hashlib
 
-    global _autonomous_agent
+    tenant = get_tenant_id()
+    _autonomous_agent = _autonomous_agents.get(tenant)
 
     if not _autonomous_agent:
         _autonomous_agent = AutonomousAgent()
+        _autonomous_agents[tenant] = _autonomous_agent
 
     # Generate intent ID
     intent_id = hashlib.md5(goal.encode()).hexdigest()[:12]
@@ -2259,6 +2363,7 @@ async def plan_goal(goal: str) -> str:
 
 
 @mcp.tool()
+@guarded(min_role=Role.ADMIN)
 async def execute_plan(intent_id: str) -> str:
     """
     Execute a previously generated action plan.
@@ -2273,7 +2378,9 @@ async def execute_plan(intent_id: str) -> str:
     """
     from mcp_network.agent import NetworkAgent, AgentConfig
 
-    global _autonomous_agent, _agent_instance
+    tenant = get_tenant_id()
+    _autonomous_agent = _autonomous_agents.get(tenant)
+    _agent_instance = _agent_instances.get(tenant)
 
     if not _autonomous_agent:
         return json.dumps({
@@ -2291,6 +2398,7 @@ async def execute_plan(intent_id: str) -> str:
     # Start agent if not running
     if not _agent_instance or not _agent_instance.running:
         _agent_instance = NetworkAgent(AgentConfig())
+        _agent_instances[tenant] = _agent_instance
         await _agent_instance.start()
 
     # Convert plan to intent (simplified - just use first monitor action)
@@ -2326,6 +2434,7 @@ async def execute_plan(intent_id: str) -> str:
 
 
 @mcp.tool()
+@guarded(min_role=Role.ADMIN)
 async def get_guardrail_status() -> str:
     """
     Get current guardrail enforcement status.
@@ -2335,7 +2444,7 @@ async def get_guardrail_status() -> str:
     Returns:
         JSON with guardrail state
     """
-    global _autonomous_agent
+    _autonomous_agent = _autonomous_agents.get(get_tenant_id())
 
     if not _autonomous_agent:
         return json.dumps({
@@ -2370,6 +2479,7 @@ def _get_auth_manager():
 
 
 @mcp.tool()
+@guarded(min_role=Role.SUPERUSER)
 async def create_api_key(
     role: str,
     description: str,
@@ -2431,23 +2541,37 @@ async def create_api_key(
             "error": f"Key generation failed: {e}",
         }, indent=2)
 
+    # Write key to a secure file instead of returning in tool output
+    # (prevents leaking plaintext key into LLM context / conversation logs)
+    from pathlib import Path
+    import os as _os
+
+    key_file = Path.home() / ".mcp_network" / "last_generated_key.txt"
+    key_file.parent.mkdir(parents=True, exist_ok=True)
+    key_file.write_text(f"{key_str}\n")
+    try:
+        _os.chmod(key_file, 0o600)
+    except Exception:
+        pass
+
     return json.dumps({
         "status": "created",
-        "api_key": key_str,
+        "key_id": api_key.key_id,
+        "key_saved_to": str(key_file),
         "key_details": {
-            "key_id": api_key.key_id,
             "role": api_key.role.value,
             "description": api_key.description,
             "rate_limit": api_key.rate_limit,
             "expires_at": api_key.expires_at.isoformat() if api_key.expires_at else None,
             "device_restrictions": api_key.device_restrictions,
         },
-        "warning": "SAVE THIS KEY NOW - it will not be shown again!",
-        "usage": f"Authorization: Bearer {key_str}",
+        "note": "Key saved to file. Read it from there, then delete the file promptly.",
+        "usage": "Authorization: Bearer <key-from-file>",
     }, indent=2)
 
 
 @mcp.tool()
+@guarded(min_role=Role.ADMIN)
 async def list_api_keys() -> str:
     """
     List all API keys with their status.
@@ -2482,6 +2606,7 @@ async def list_api_keys() -> str:
 
 
 @mcp.tool()
+@guarded(min_role=Role.ADMIN)
 async def revoke_api_key(key_id: str) -> str:
     """
     Revoke an API key to prevent further use.
@@ -2513,6 +2638,7 @@ async def revoke_api_key(key_id: str) -> str:
 
 
 @mcp.tool()
+@guarded(min_role=Role.SUPERUSER)
 async def rotate_api_key(key_id: str) -> str:
     """
     Rotate an API key by revoking it and creating a new one with the same permissions.
@@ -2557,13 +2683,25 @@ async def rotate_api_key(key_id: str) -> str:
             "note": f"Old key {key_id} was revoked but new key creation failed",
         }, indent=2)
 
+    # Write key to a secure file instead of returning in tool output
+    from pathlib import Path
+    import os as _os
+
+    key_file = Path.home() / ".mcp_network" / "last_generated_key.txt"
+    key_file.parent.mkdir(parents=True, exist_ok=True)
+    key_file.write_text(f"{key_str}\n")
+    try:
+        _os.chmod(key_file, 0o600)
+    except Exception:
+        pass
+
     return json.dumps({
         "status": "rotated",
         "old_key_id": key_id,
         "new_key_id": new_key.key_id,
-        "api_key": key_str,
-        "warning": "SAVE THIS KEY NOW - it will not be shown again!",
-        "usage": f"Authorization: Bearer {key_str}",
+        "key_saved_to": str(key_file),
+        "note": "New key saved to file. Read it from there, then delete the file promptly.",
+        "usage": "Authorization: Bearer <key-from-file>",
     }, indent=2)
 
 
@@ -2572,6 +2710,7 @@ async def rotate_api_key(key_id: str) -> str:
 # ============================================================================
 
 @mcp.tool()
+@guarded(min_role=Role.OPERATOR)
 async def query_metrics_history(
     device_id: str,
     metric: str,
@@ -2594,6 +2733,9 @@ async def query_metrics_history(
         JSON with historical metrics and statistics
     """
     from mcp_network.storage import get_database, MetricRepository
+
+    hours = min(hours, 8760)   # 1 year max
+    limit = min(limit, 10000)
 
     db = get_database()
     repo = MetricRepository(db)
@@ -2642,6 +2784,7 @@ async def query_metrics_history(
 
 
 @mcp.tool()
+@guarded(min_role=Role.OPERATOR)
 async def get_incident_history(days: int = 7, limit: int = 50) -> str:
     """
     Get incident history from persistent storage.
@@ -2655,6 +2798,9 @@ async def get_incident_history(days: int = 7, limit: int = 50) -> str:
     Returns:
         JSON with incident history
     """
+    days = min(days, 365)
+    limit = min(limit, 10000)
+
     from mcp_network.storage import get_database, IncidentRepository
 
     db = get_database()
@@ -2691,6 +2837,7 @@ async def get_incident_history(days: int = 7, limit: int = 50) -> str:
 
 
 @mcp.tool()
+@guarded(min_role=Role.OPERATOR)
 async def search_config_changes(
     device_id: str,
     days: int = 30,
@@ -2708,6 +2855,8 @@ async def search_config_changes(
     Returns:
         JSON with config change history
     """
+    days = min(days, 365)
+
     from mcp_network.storage import get_database, ConfigRepository
 
     db = get_database()
@@ -2735,6 +2884,7 @@ async def search_config_changes(
 
 
 @mcp.tool()
+@guarded(min_role=Role.OPERATOR)
 async def get_device_timeline(
     device_id: str,
     hours: int = 24,
@@ -2752,6 +2902,8 @@ async def get_device_timeline(
     Returns:
         JSON with unified event timeline
     """
+    hours = min(hours, 8760)  # 1 year max
+
     from mcp_network.storage import get_database, IncidentRepository, ConfigRepository
 
     db = get_database()
@@ -2807,20 +2959,22 @@ async def get_device_timeline(
 # Notifications: Alert Management Tools
 # ============================================================================
 
-# Module-level notification router
-_notification_router = None
+# Tenant-scoped notification routers
+_notification_routers: dict = {}
 
 
 def _get_notification_router():
-    """Get or create notification router singleton."""
-    global _notification_router
-    if _notification_router is None:
-        from mcp_network.notifications import NotificationRouter
-        _notification_router = NotificationRouter()
-    return _notification_router
+    """Get or create tenant-scoped notification router."""
+    from mcp_network.notifications import NotificationRouter
+    return _get_for_tenant(
+        _notification_routers,
+        NotificationRouter,
+        tenant_id=get_tenant_id(),
+    )
 
 
 @mcp.tool()
+@guarded(min_role=Role.ADMIN)
 async def add_notification_channel(
     channel_type: str,
     name: str,
@@ -2865,6 +3019,19 @@ async def add_notification_channel(
             "error": f"Invalid JSON config: {e}",
         }, indent=2)
 
+    # SSRF protection: validate any webhook/notification URLs before creating channels
+    from mcp_network.security.ssrf import validate_webhook_url, SSRFError
+
+    _url_fields = ("webhook_url", "url")
+    for field in _url_fields:
+        if field in config_dict:
+            try:
+                validate_webhook_url(config_dict[field])
+            except SSRFError as e:
+                return json.dumps({
+                    "error": f"URL validation failed: {e}",
+                }, indent=2)
+
     # Create channel based on type
     try:
         if channel_type == "slack":
@@ -2899,6 +3066,7 @@ async def add_notification_channel(
 
 
 @mcp.tool()
+@guarded(min_role=Role.ADMIN)
 async def test_notification_channel(name: str) -> str:
     """
     Send a test notification to verify channel works.
@@ -2955,6 +3123,7 @@ async def test_notification_channel(name: str) -> str:
 
 
 @mcp.tool()
+@guarded(min_role=Role.ADMIN)
 async def list_notification_channels() -> str:
     """
     List all configured notification channels.
@@ -2978,6 +3147,7 @@ async def list_notification_channels() -> str:
 
 
 @mcp.tool()
+@guarded(min_role=Role.ADMIN)
 async def set_notification_rules(rules_json: str) -> str:
     """
     Configure notification routing rules.
@@ -3038,6 +3208,7 @@ async def set_notification_rules(rules_json: str) -> str:
 
 
 @mcp.tool()
+@guarded(min_role=Role.ADMIN)
 async def send_test_alert(
     severity: str = "info",
     message: str = "Manual test alert",

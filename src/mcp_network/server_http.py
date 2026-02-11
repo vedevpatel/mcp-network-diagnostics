@@ -73,7 +73,11 @@ class AuthMiddleware:
 
 
 class RateLimitMiddleware:
-    """Starlette middleware: per-key and global rate limit, return 429 when exceeded."""
+    """Starlette middleware: per-key and global rate limit, return 429 when exceeded.
+
+    NOTE: The in-memory rate limiter is acceptable for single-process
+    deployments.  Multi-process deployments need a Redis-backed rate limiter.
+    """
 
     def __init__(self, app, api_keys_file: Optional[str] = None):
         self.app = app
@@ -124,12 +128,19 @@ class AuthzMiddleware:
             return
 
         # Read body (we need to replay it for the next handler)
+        MAX_BODY_SIZE = 1_048_576  # 1 MB
         body = b""
         more = True
         while more:
             event = await receive()
             if event["type"] == "http.request":
                 body += event.get("body", b"")
+                if len(body) > MAX_BODY_SIZE:
+                    await _send_json(send, 413, {
+                        "error": "payload_too_large",
+                        "message": f"Request body exceeds {MAX_BODY_SIZE} bytes",
+                    })
+                    return
                 more = event.get("more_body", False)
 
         state = scope.get("state", {})
@@ -150,13 +161,71 @@ class AuthzMiddleware:
                                 await _send_json(send, 403, {"error": "forbidden", "message": f"Tool '{tool_name}' not allowed for your role"})
                                 return
             except (json.JSONDecodeError, KeyError):
-                pass
+                # If auth is required, reject malformed JSON bodies
+                # instead of silently passing them through
+                if self.require_auth:
+                    await _send_json(send, 400, {
+                        "error": "bad_request",
+                        "message": "Malformed JSON-RPC body",
+                    })
+                    return
 
         # Replay request body for downstream (they read via receive())
         async def replay_receive():
             return {"type": "http.request", "body": body, "more_body": False}
 
         await self.app(scope, replay_receive, send)
+
+
+class CORSMiddleware:
+    """Restrictive CORS: same-origin by default, configurable via env."""
+
+    def __init__(self, app):
+        self.app = app
+        raw = os.getenv("MCP_NETWORK_CORS_ORIGINS", "")
+        self.allowed_origins = {o.strip() for o in raw.split(",") if o.strip()} if raw else set()
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        # Handle preflight
+        headers_raw = dict(scope.get("headers", []))
+        origin = headers_raw.get(b"origin", b"").decode()
+
+        if scope["method"] == "OPTIONS":
+            cors_headers = self._cors_headers(origin)
+            await send({
+                "type": "http.response.start",
+                "status": 204,
+                "headers": cors_headers,
+            })
+            await send({"type": "http.response.body", "body": b""})
+            return
+
+        # Wrap send to inject CORS headers
+        cors_headers = self._cors_headers(origin)
+
+        async def send_with_cors(message):
+            if message["type"] == "http.response.start":
+                existing = list(message.get("headers", []))
+                existing.extend(cors_headers)
+                message = {**message, "headers": existing}
+            await send(message)
+
+        await self.app(scope, receive, send_with_cors)
+
+    def _cors_headers(self, origin: str) -> list:
+        headers = []
+        if origin and (origin in self.allowed_origins or not self.allowed_origins):
+            # If no origins configured, only same-origin requests pass (browser default)
+            if self.allowed_origins:
+                headers.append([b"access-control-allow-origin", origin.encode()])
+                headers.append([b"access-control-allow-methods", b"GET, POST, OPTIONS"])
+                headers.append([b"access-control-allow-headers", b"Authorization, Content-Type, X-API-Key"])
+                headers.append([b"access-control-max-age", b"3600"])
+        return headers
 
 
 async def _send_json(send, status: int, obj: dict):
@@ -179,6 +248,12 @@ def run_http(
         try:
             from mcp.server.http import create_streamable_http_app
         except ImportError:
+            if require_auth:
+                raise RuntimeError(
+                    "create_streamable_http_app not available but require_auth=True. "
+                    "Cannot run HTTP transport without auth middleware. "
+                    "Install fastmcp or mcp with HTTP support."
+                )
             # Fallback: use mcp.run() without custom middleware (no auth)
             logger.warning("create_streamable_http_app not found; running with mcp.run(transport=streamable-http) without middleware")
             from mcp_network.app import mcp
@@ -194,11 +269,12 @@ def run_http(
         middleware=None,
     )
 
-    # Wrap with our middleware (inner to outer: base_app -> Authz -> RateLimit -> Auth)
+    # Wrap with our middleware (inner to outer: base_app -> Authz -> RateLimit -> Auth -> CORS)
     app = base_app
     app = AuthzMiddleware(app, require_auth)
     app = RateLimitMiddleware(app)
     app = AuthMiddleware(app, require_auth, api_keys_file)
+    app = CORSMiddleware(app)
 
     import uvicorn
     logger.info(f"Starting MCP HTTP server at http://{host}:{port}{path} (require_auth={require_auth})")

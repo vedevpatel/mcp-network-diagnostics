@@ -476,3 +476,103 @@ class TestSecureToolDecorator:
         # Verify decorator exists and is callable
         assert hasattr(middleware, "secure_tool")
         assert callable(middleware.secure_tool)
+
+
+# ============================================================================
+# AuthzMiddleware JSON Bypass Tests
+# ============================================================================
+
+class TestAuthzMiddlewareBypass:
+    """Test that AuthzMiddleware rejects malformed JSON when auth required."""
+
+    @pytest.fixture
+    def authz_middleware(self):
+        """Create an AuthzMiddleware instance with require_auth=True."""
+        import json
+        from mcp_network.server_http import AuthzMiddleware
+
+        # dummy inner app
+        async def inner_app(scope, receive, send):
+            await send({
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [[b"content-type", b"application/json"]],
+            })
+            await send({
+                "type": "http.response.body",
+                "body": json.dumps({"ok": True}).encode(),
+            })
+
+        return AuthzMiddleware(inner_app, require_auth=True)
+
+    def test_malformed_json_rejected_when_auth_required(self, authz_middleware):
+        """Malformed JSON body is rejected with 400 when auth required."""
+        import asyncio
+
+        captured = []
+
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": "/mcp",
+            "state": {},
+        }
+
+        async def receive():
+            return {
+                "type": "http.request",
+                "body": b"this is not valid json{{{",
+                "more_body": False,
+            }
+
+        async def send(message):
+            captured.append(message)
+
+        async def run():
+            await authz_middleware(scope, receive, send)
+
+        asyncio.run(run())
+
+        # Should return 400
+        start_msg = captured[0]
+        assert start_msg["status"] == 400
+
+    def test_valid_json_passes_through(self):
+        """Valid JSON body passes through AuthzMiddleware."""
+        import asyncio
+        import json
+        from mcp_network.server_http import AuthzMiddleware
+
+        passed = {"through": False}
+
+        async def inner_app(scope, receive, send):
+            passed["through"] = True
+            await send({
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [],
+            })
+            await send({"type": "http.response.body", "body": b""})
+
+        middleware = AuthzMiddleware(inner_app, require_auth=False)
+
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": "/mcp",
+            "state": {},
+        }
+
+        body = json.dumps({"method": "tools/list", "params": {}}).encode()
+
+        async def receive():
+            return {"type": "http.request", "body": body, "more_body": False}
+
+        async def send(message):
+            pass
+
+        async def run():
+            await middleware(scope, receive, send)
+
+        asyncio.run(run())
+        assert passed["through"] is True

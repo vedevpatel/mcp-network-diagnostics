@@ -324,8 +324,19 @@ class SSHCollector:
         """
         Open a fresh SSH session to device_id, run command, return output.
 
-        Raises ValueError if the device is unknown or not reachable.
+        Raises ValueError if the device is unknown, not reachable,
+        or the command fails safety validation.
         """
+        import re
+
+        # Defense-in-depth: reject control chars even if the tool layer missed them
+        if any(c in command for c in '\n\r\x00'):
+            raise ValueError("Command contains forbidden control characters")
+
+        # Must start with a read-only keyword
+        if not re.match(r'^(show|display|ping|traceroute)\s+', command, re.IGNORECASE):
+            raise ValueError("Only read-only commands are permitted at the collector level")
+
         cfg = self._device_config(device_id)
         if not cfg:
             raise ValueError(f"Device '{device_id}' not found in topology")

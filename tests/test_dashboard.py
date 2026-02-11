@@ -185,3 +185,65 @@ def test_health_check_endpoint(client, sample_devices, sample_incidents):
     assert response.status_code == 200
     # Should show some health percentage
     assert b"%" in response.content
+
+
+# ============================================================================
+# Session Secret Tests
+# ============================================================================
+
+class TestSessionSecret:
+    """Test session secret behavior in production vs development."""
+
+    def test_production_without_secret_raises(self, monkeypatch):
+        """Production mode without MCP_NETWORK_SESSION_SECRET raises RuntimeError."""
+        monkeypatch.setenv("MCP_NETWORK_ENV", "production")
+        monkeypatch.delenv("MCP_NETWORK_SESSION_SECRET", raising=False)
+
+        # Force reimport to pick up env changes
+        import importlib
+        from mcp_network.dashboard import session
+        importlib.reload(session)
+
+        with pytest.raises(RuntimeError, match="MCP_NETWORK_SESSION_SECRET"):
+            session._get_secret()
+
+    def test_development_with_fallback_works(self, monkeypatch):
+        """Development mode uses hardcoded fallback."""
+        monkeypatch.setenv("MCP_NETWORK_ENV", "development")
+        monkeypatch.delenv("MCP_NETWORK_SESSION_SECRET", raising=False)
+
+        import importlib
+        from mcp_network.dashboard import session
+        importlib.reload(session)
+
+        secret = session._get_secret()
+        assert isinstance(secret, bytes)
+        assert len(secret) == 32  # SHA-256 output
+
+    def test_explicit_secret_used(self, monkeypatch):
+        """Explicit secret env var is used when set."""
+        monkeypatch.setenv("MCP_NETWORK_SESSION_SECRET", "my-super-secret-key")
+        monkeypatch.setenv("MCP_NETWORK_ENV", "production")
+
+        import importlib
+        from mcp_network.dashboard import session
+        importlib.reload(session)
+
+        secret = session._get_secret()
+        assert isinstance(secret, bytes)
+        assert len(secret) == 32
+
+    def test_valid_secret_generates_verifiable_cookies(self, monkeypatch):
+        """Session cookies created with valid secret can be verified."""
+        monkeypatch.setenv("MCP_NETWORK_SESSION_SECRET", "test-secret-123")
+        monkeypatch.setenv("MCP_NETWORK_ENV", "production")
+
+        import importlib
+        from mcp_network.dashboard import session
+        importlib.reload(session)
+
+        identity, cookie = session.create_session_cookie_value()
+        assert identity.startswith("guest_")
+
+        verified = session.verify_session_cookie(cookie)
+        assert verified == identity

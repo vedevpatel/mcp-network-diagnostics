@@ -17,12 +17,29 @@ SESSION_EXPIRY_DAYS = 90
 SESSION_ID_BYTES = 32
 
 
+import logging
+
+_session_logger = logging.getLogger(__name__)
+
+
 def _get_secret() -> bytes:
-    """Session signing secret from env or default (dev only)."""
-    raw = os.getenv("MCP_NETWORK_SESSION_SECRET", "").encode()
+    """Session signing secret from env, required in production."""
+    raw = os.getenv("MCP_NETWORK_SESSION_SECRET", "")
+    env_mode = os.getenv("MCP_NETWORK_ENV", "development").lower()
+
     if not raw:
-        raw = b"mcp-network-dashboard-dev-secret-change-in-production"
-    return hashlib.sha256(raw).digest()
+        if env_mode != "development":
+            raise RuntimeError(
+                "MCP_NETWORK_SESSION_SECRET must be set in production. "
+                "Set MCP_NETWORK_ENV=development to use the insecure default."
+            )
+        _session_logger.warning(
+            "Using insecure hardcoded session secret (dev mode). "
+            "Set MCP_NETWORK_SESSION_SECRET for production."
+        )
+        raw = "mcp-network-dashboard-dev-secret-change-in-production"
+
+    return hashlib.sha256(raw.encode()).digest()
 
 
 def _make_payload(session_id: str, expiry_ts: int) -> str:
