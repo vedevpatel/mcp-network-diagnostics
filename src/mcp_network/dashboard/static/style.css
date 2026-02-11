@@ -411,7 +411,7 @@ th {
 
 .tools-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
     gap: 20px;
 }
 
@@ -424,6 +424,9 @@ th {
     flex-direction: column;
     gap: 12px;
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    /* Grid items default to min-width:auto which can cause overflow/overlap
+       when inner content has a large min-content width (e.g. 3-column results). */
+    min-width: 0;
 }
 
 /* Clear "tool is running" state: card gets accent border and soft glow */
@@ -1052,9 +1055,15 @@ th {
 /* Speedtest results */
 .speedtest-results {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 16px;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
     margin-bottom: 16px;
+}
+
+@media (max-width: 520px) {
+    .speedtest-results {
+        grid-template-columns: 1fr;
+    }
 }
 
 .speedtest-card {
