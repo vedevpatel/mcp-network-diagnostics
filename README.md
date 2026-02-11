@@ -1,5 +1,11 @@
 # MCP Network Diagnostics
 
+[![PyPI version](https://badge.fury.io/py/mcp-network.svg)](https://badge.fury.io/py/mcp-network)
+[![Python Versions](https://img.shields.io/pypi/pyversions/mcp-network.svg)](https://pypi.org/project/mcp-network/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![CI](https://github.com/vedevpatel/mcp-network-diagnostics/actions/workflows/ci.yml/badge.svg)](https://github.com/vedevpatel/mcp-network-diagnostics/actions/workflows/ci.yml)
+
+
 AI-powered network diagnostics with two modes: **Operator Mode** (SSH to devices) and **Consumer Mode** (edge diagnostics).
 
 ## Features
