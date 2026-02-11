@@ -9,10 +9,13 @@ def mock_edge_collector_network_calls(request):
     Can be disabled for specific tests using @pytest.mark.no_global_network_mock
     """
     if request.node.get_closest_marker("no_global_network_mock"):
-        yield
+        # Still need to patch security mode for these tests
+        with patch("mcp_network.security.tool_guard._STDIO_MODE", "full"):
+            yield
         return
 
-    with patch("mcp_network.collectors.edge.EdgeCollector._get_default_gateway", return_value="192.168.1.1"), \
+    with patch("mcp_network.security.tool_guard._STDIO_MODE", "full"), \
+         patch("mcp_network.collectors.edge.EdgeCollector._get_default_gateway", return_value="192.168.1.1"), \
          patch("mcp_network.collectors.edge.EdgeCollector._ping", new_callable=AsyncMock) as mock_ping, \
          patch("mcp_network.collectors.edge.EdgeCollector._probe_dns", new_callable=AsyncMock) as mock_dns, \
          patch("mcp_network.collectors.edge.EdgeCollector._run_traceroute", new_callable=AsyncMock) as mock_trace, \

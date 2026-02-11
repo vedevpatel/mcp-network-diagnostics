@@ -132,8 +132,20 @@ class TestEdgeCollector:
 
     def test_probe_destination_basic(self):
         """Test full destination probe."""
+        from unittest.mock import patch, AsyncMock
+        from mcp_network.collectors.edge import HopResult, DNSResult
+
         # Use a reliable target
-        probe = _run(self.collector.probe_destination("google.com"))
+        with patch.object(self.collector, "_get_default_gateway", return_value="192.168.1.1"), \
+             patch.object(self.collector, "_ping", new_callable=AsyncMock) as mock_ping, \
+             patch.object(self.collector, "_probe_dns", new_callable=AsyncMock) as mock_dns, \
+             patch.object(self.collector, "_run_traceroute", new_callable=AsyncMock) as mock_trace:
+            
+            mock_ping.return_value = (10.0, 0.0)
+            mock_trace.return_value = [HopResult(1, "192.168.1.1", "gateway", 2.0, 0.0)]
+            mock_dns.return_value = DNSResult("google.com", "8.8.8.8", 10.0)
+            
+            probe = _run(self.collector.probe_destination("google.com"))
 
         assert probe.target == "google.com"
         assert probe.gateway is not None
