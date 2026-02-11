@@ -130,6 +130,10 @@ class TestAuthentication:
 
         # Load with second instance
         auth2 = AuthManager(str(keys_file))
+        
+        # Ensure keys were actually loaded (helps debug CI failures)
+        assert len(auth2.keys) > 0, "Failed to load persisted keys"
+        
         authenticated = auth2.authenticate(plaintext)
         assert authenticated is not None
 

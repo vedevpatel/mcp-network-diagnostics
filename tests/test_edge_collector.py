@@ -74,12 +74,18 @@ class TestEdgeCollector:
 
     def test_gateway_probe(self):
         """Test gateway probing."""
-        result = _run(self.collector._probe_gateway())
+        # Mock gateway IP and ping response
+        with patch.object(self.collector, "_get_default_gateway", return_value="192.168.1.1"), \
+             patch.object(self.collector, "_ping", new_callable=AsyncMock) as mock_ping:
+            
+            mock_ping.return_value = (2.5, 0.0)
+            
+            result = _run(self.collector._probe_gateway())
 
-        assert result.ip is not None
-        assert result.latency_ms >= 0.0
-        assert 0.0 <= result.loss_pct <= 100.0
-        assert result.status in ("healthy", "degraded", "unreachable")
+            assert result.ip == "192.168.1.1"
+            assert result.latency_ms == 2.5
+            assert result.loss_pct == 0.0
+            assert result.status == "healthy"
 
     def test_dns_probe(self):
         """Test DNS resolution timing."""
@@ -92,11 +98,24 @@ class TestEdgeCollector:
 
     def test_ping(self):
         """Test ping functionality."""
-        # Ping a reliable target
-        latency, loss = _run(self.collector._ping("8.8.8.8", count=3))
+        # Mock ping execution to avoid system dependencies
+        with patch("mcp_network.collectors.edge.asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_proc:
+            # Configure mock process output (Linux/Mac style)
+            mock_stdout = AsyncMock()
+            mock_stdout.communicate.return_value = (
+                b"PING 8.8.8.8 (8.8.8.8): 56 data bytes\n"
+                b"64 bytes from 8.8.8.8: icmp_seq=0 ttl=117 time=14.2 ms\n"
+                b"--- 8.8.8.8 ping statistics ---\n"
+                b"3 packets transmitted, 3 packets received, 0.0% packet loss\n"
+                b"round-trip min/avg/max/stddev = 12.1/14.5/16.8/2.1 ms\n",
+                b""
+            )
+            mock_proc.return_value.communicate = mock_stdout.communicate
+            
+            latency, loss = _run(self.collector._ping("8.8.8.8", count=3))
 
-        assert latency >= 0.0
-        assert 0.0 <= loss <= 100.0
+            assert latency == 14.5
+            assert loss == 0.0
 
     def test_traceroute(self):
         """Test traceroute collection."""
