@@ -262,6 +262,13 @@ th {
     margin-bottom: 8px;
 }
 
+.card-desc {
+    font-size: 12px;
+    color: #6e7681;
+    line-height: 1.4;
+    margin: 0 0 10px 0;
+}
+
 .card-main {
     display: flex;
     align-items: center;

@@ -43,6 +43,7 @@
 <div class="connection-grid">
     <div class="connection-card">
         <div class="card-label">WiFi</div>
+        <p class="card-desc">Wireless signal quality between your device and router.</p>
         {% if layers.wifi.available %}
         <div class="card-main">
             <span class="card-value">
@@ -78,6 +79,7 @@
 
     <div class="connection-card">
         <div class="card-label">Local Network</div>
+        <p class="card-desc">Network connectivity to your gateway (router's IP address).</p>
         <div class="card-main">
             <span class="card-value">
                 {{ layers.local_network.gateway_ip }}
@@ -94,6 +96,7 @@
 
     <div class="connection-card">
         <div class="card-label">DNS</div>
+        <p class="card-desc">How quickly domain names turn into addresses.</p>
         <div class="card-main">
             <span class="card-value">
                 {% if layers.dns.google_ms == "failed" and layers.dns.cloudflare_ms == "failed" %}
@@ -111,6 +114,7 @@
 
     <div class="connection-card">
         <div class="card-label">Internet</div>
+        <p class="card-desc">Reachability and delay to the wider internet.</p>
         <div class="card-main">
             <span class="card-value">
                 {{ layers.internet.latency_to_8888_ms }} ms

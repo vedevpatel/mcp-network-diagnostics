@@ -11,11 +11,20 @@ router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
 
 
-async def _get_agent_status_data() -> dict:
-    """Call agent_status tool and return parsed JSON."""
-    from mcp_network.tools import agent_status
-    raw = await agent_status()
-    return json.loads(raw)
+async def _get_agent_status_data() -> dict | None:
+    """Call agent_status tool and return parsed JSON.
+    
+    Returns None if the tool is not available (e.g., consumer mode).
+    """
+    try:
+        from mcp_network.tools import agent_status
+        raw = await agent_status()
+        return json.loads(raw)
+    except PermissionError:
+        # Tool not available in consumer mode
+        return None
+    except Exception:
+        return None
 
 
 async def _get_collection_status_data() -> dict | None:
@@ -35,20 +44,25 @@ async def status_partial(request: Request):
     collection_data = await _get_collection_status_data()
 
     # Normalize agent state for display
-    agent_status_str = agent_data.get("status", "unknown")
-    if agent_status_str == "not_initialized":
-        agent_label = "Not started"
+    if agent_data is None:
+        # Agent status not available (consumer mode or permission denied)
+        agent_label = "Consumer mode"
         agent_class = "status-not-started"
-    elif agent_status_str == "running":
-        agent_label = "Running"
-        agent_class = "status-running"
-        intents = agent_data.get("intents", {})
-        total = intents.get("total", 0)
-        if total:
-            agent_label = f"Running ({total} intent{'s' if total != 1 else ''})"
     else:
-        agent_label = "Stopped"
-        agent_class = "status-stopped"
+        agent_status_str = agent_data.get("status", "unknown")
+        if agent_status_str == "not_initialized":
+            agent_label = "Not started"
+            agent_class = "status-not-started"
+        elif agent_status_str == "running":
+            agent_label = "Running"
+            agent_class = "status-running"
+            intents = agent_data.get("intents", {})
+            total = intents.get("total", 0)
+            if total:
+                agent_label = f"Running ({total} intent{'s' if total != 1 else ''})"
+        else:
+            agent_label = "Stopped"
+            agent_class = "status-stopped"
 
     # Collection: show only when we have data (operator mode)
     collection_html = ""
