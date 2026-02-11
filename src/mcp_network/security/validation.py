@@ -1,7 +1,9 @@
 """Input validation and sanitization."""
 
+import ipaddress
 import re
 from typing import Any
+from urllib.parse import urlparse
 
 
 class ValidationError(Exception):
@@ -88,6 +90,145 @@ class InputValidator:
             f"Invalid destination: '{dest}'. "
             "Must be a valid IP address or hostname"
         )
+
+    # Schemes allowed for HTTP probing
+    _ALLOWED_URL_SCHEMES = {"http", "https"}
+
+    def _is_internal_ip(self, ip_str: str) -> bool:
+        """Check if an IP address is internal/reserved (SSRF risk).
+
+        Args:
+            ip_str: IP address string
+
+        Returns:
+            True if the IP is private, loopback, link-local, or otherwise reserved
+        """
+        try:
+            addr = ipaddress.ip_address(ip_str)
+            return (
+                addr.is_private
+                or addr.is_loopback
+                or addr.is_link_local
+                or addr.is_reserved
+                or addr.is_multicast
+                or addr.is_unspecified
+            )
+        except ValueError:
+            return False
+
+    def validate_destination_safe(self, dest: str) -> str:
+        """Validate destination for consumer tools with SSRF protection.
+
+        Accepts hostnames, IPs, or http(s) URLs.  Blocks:
+        - Internal / private / loopback / link-local IPs
+        - Non-http(s) URL schemes (file://, gopher://, ftp://, etc.)
+        - Shell metacharacters and injection patterns
+
+        Args:
+            dest: URL, hostname, or IP address
+
+        Returns:
+            Sanitized destination string
+
+        Raises:
+            ValidationError: If validation fails
+        """
+        if not dest or not isinstance(dest, str):
+            raise ValidationError("Destination must be a non-empty string")
+
+        dest = dest.strip()
+
+        if len(dest) > 2048:
+            raise ValidationError("Destination too long (max 2048 characters)")
+
+        # Check for null bytes
+        if "\x00" in dest:
+            raise ValidationError("Destination contains null bytes")
+
+        # Check for shell metacharacters in the raw string
+        for pattern in self.INJECTION_PATTERNS:
+            if re.search(pattern, dest, re.IGNORECASE):
+                raise ValidationError("Potentially dangerous characters in destination")
+
+        # If it looks like a URL, validate scheme
+        if "://" in dest:
+            parsed = urlparse(dest)
+            if parsed.scheme.lower() not in self._ALLOWED_URL_SCHEMES:
+                raise ValidationError(
+                    f"URL scheme '{parsed.scheme}' is not allowed. "
+                    "Only http and https are permitted."
+                )
+            # Extract host portion for IP check
+            hostname = parsed.hostname or ""
+        else:
+            hostname = dest
+
+        # Strip port if present on a bare host:port
+        if ":" in hostname and not hostname.startswith("["):
+            hostname = hostname.rsplit(":", 1)[0]
+
+        # Validate as IP or hostname
+        if re.match(self.IP_PATTERN, hostname):
+            if self._is_internal_ip(hostname):
+                raise ValidationError(
+                    f"Destination '{hostname}' is an internal/private IP address. "
+                    "Only public IP addresses are allowed."
+                )
+            return dest
+
+        if re.match(self.HOSTNAME_PATTERN, hostname):
+            if len(hostname) > 253:
+                raise ValidationError("Hostname too long (max 253 characters)")
+            # Block common internal hostnames
+            lower = hostname.lower()
+            if lower in ("localhost", "localhost.localdomain"):
+                raise ValidationError("Destination 'localhost' is not allowed.")
+            return dest
+
+        raise ValidationError(
+            f"Invalid destination: '{dest}'. "
+            "Must be a valid IP address, hostname, or http(s) URL."
+        )
+
+    def validate_url_safe(self, url: str) -> str:
+        """Validate a URL for safe HTTP probing (SSRF protection).
+
+        Only http:// and https:// schemes are allowed.
+        Internal/private IPs are blocked.
+
+        Args:
+            url: URL to validate
+
+        Returns:
+            Validated URL
+
+        Raises:
+            ValidationError: If URL is unsafe
+        """
+        if not url or not isinstance(url, str):
+            raise ValidationError("URL must be a non-empty string")
+
+        url = url.strip()
+
+        parsed = urlparse(url)
+        if parsed.scheme.lower() not in self._ALLOWED_URL_SCHEMES:
+            raise ValidationError(
+                f"URL scheme '{parsed.scheme}' is not allowed. "
+                "Only http and https are permitted."
+            )
+
+        hostname = parsed.hostname or ""
+        if re.match(self.IP_PATTERN, hostname):
+            if self._is_internal_ip(hostname):
+                raise ValidationError(
+                    f"URL target '{hostname}' is an internal/private IP address."
+                )
+
+        lower = hostname.lower()
+        if lower in ("localhost", "localhost.localdomain"):
+            raise ValidationError("URL target 'localhost' is not allowed.")
+
+        return url
 
     def validate_command(self, command: str) -> str:
         """Validate and sanitize command input.

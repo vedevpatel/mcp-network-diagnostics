@@ -4,7 +4,11 @@
         <span class="system-status-dot {{ agent_class }}" aria-hidden="true"></span>
         <span class="system-status-value">{{ agent_label }}</span>
     </span>
-    {% if collection_html %}
-    {{ collection_html | safe }}
+    {% if collection_info %}
+    <span class="system-status-item">
+        <span class="system-status-label">Collection</span>
+        <span class="system-status-dot {{ collection_info.css_class }}" aria-hidden="true"></span>
+        <span class="system-status-value">{{ collection_info.label }}</span>
+    </span>
     {% endif %}
 </div>

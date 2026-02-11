@@ -87,6 +87,23 @@ class EdgeCollector:
         """Initialize edge collector."""
         self.platform = platform.system()  # Darwin, Linux, Windows
 
+    @staticmethod
+    def _is_internal_ip(ip_str: str) -> bool:
+        """Check if an IP address is internal/reserved (SSRF risk)."""
+        import ipaddress
+        try:
+            addr = ipaddress.ip_address(ip_str)
+            return (
+                addr.is_private
+                or addr.is_loopback
+                or addr.is_link_local
+                or addr.is_reserved
+                or addr.is_multicast
+                or addr.is_unspecified
+            )
+        except ValueError:
+            return False
+
     async def probe_destination(self, target: str) -> ProbeResult:
         """Full diagnostic probe to a destination.
 
@@ -95,15 +112,37 @@ class EdgeCollector:
 
         Returns:
             Complete probe results with gateway, DNS, traceroute, HTTP
+
+        Raises:
+            ValueError: If the target is an internal IP or uses a blocked URL scheme
         """
         # Parse target
         if target.startswith(("http://", "https://")):
             parsed = urlparse(target)
-            hostname = parsed.netloc
+            hostname = parsed.netloc or ""
+            # Strip port from netloc (e.g. "host:8080")
+            if ":" in hostname and not hostname.startswith("["):
+                hostname = hostname.rsplit(":", 1)[0]
             is_http = True
+        elif "://" in target:
+            # Block non-http(s) schemes entirely (file://, gopher://, etc.)
+            scheme = target.split("://", 1)[0]
+            raise ValueError(
+                f"URL scheme '{scheme}' is not allowed. Only http and https are permitted."
+            )
         else:
             hostname = target
             is_http = False
+
+        # Block internal IPs to prevent SSRF
+        if self._is_ip(hostname) and self._is_internal_ip(hostname):
+            raise ValueError(
+                f"Target '{hostname}' is an internal/private IP address. "
+                "Only public addresses are allowed."
+            )
+        # Block localhost hostnames
+        if hostname.lower() in ("localhost", "localhost.localdomain"):
+            raise ValueError("Target 'localhost' is not allowed.")
 
         # Run probes in parallel where possible
         gateway_task = self._probe_gateway()
@@ -231,11 +270,27 @@ class EdgeCollector:
             return (0.0, 100.0)  # Complete failure
 
     async def _probe_http(self, url: str) -> Optional[HTTPResult]:
-        """Measure HTTP timing breakdown using curl."""
+        """Measure HTTP timing breakdown using curl.
+
+        Only http:// and https:// URLs are permitted.
+        Internal/private IPs and localhost are blocked (SSRF protection).
+        """
         try:
-            # Use curl for detailed timing
+            # SSRF protection: validate URL scheme and host
+            parsed = urlparse(url)
+            if parsed.scheme.lower() not in ("http", "https"):
+                return None  # Silently skip non-http(s) URLs
+
+            hostname = parsed.hostname or ""
+            if self._is_ip(hostname) and self._is_internal_ip(hostname):
+                return None  # Block internal IPs
+            if hostname.lower() in ("localhost", "localhost.localdomain"):
+                return None  # Block localhost
+
+            # Use curl for detailed timing — add --proto to restrict protocols
             cmd = [
                 "curl",
+                "--proto", "=http,https",  # Only allow http and https protocols
                 "-w", json.dumps({
                     "dns": "%{time_namelookup}",
                     "connect": "%{time_connect}",
@@ -246,6 +301,7 @@ class EdgeCollector:
                 }),
                 "-o", "/dev/null",
                 "-s",
+                "--max-redirs", "5",
                 url,
             ]
 
