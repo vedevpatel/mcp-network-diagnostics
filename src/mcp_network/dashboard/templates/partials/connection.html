@@ -89,7 +89,7 @@
             </span>
         </div>
         <div class="card-sub">
-            {{ layers.local_network.latency_ms }} ms ·
+            {% if layers.local_network.latency_ms is not none %}{{ layers.local_network.latency_ms }} ms{% else %}n/a{% endif %} ·
             {{ layers.local_network.loss_pct }}% loss
         </div>
     </div>
@@ -117,7 +117,7 @@
         <p class="card-desc">Reachability and delay to the wider internet.</p>
         <div class="card-main">
             <span class="card-value">
-                {{ layers.internet.latency_to_8888_ms }} ms
+                {% if layers.internet.latency_to_8888_ms is not none %}{{ layers.internet.latency_to_8888_ms }} ms{% else %}n/a{% endif %}
             </span>
             <span class="badge badge-soft">
                 {{ layers.internet.packet_loss_pct }}% loss

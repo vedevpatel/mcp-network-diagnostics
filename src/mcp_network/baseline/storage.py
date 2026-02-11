@@ -19,11 +19,11 @@ from statistics import mean, stdev
 class BaselineSnapshot:
     """Single baseline measurement."""
     timestamp: float
-    gateway_latency_ms: float
-    gateway_loss_pct: float
-    dns_resolution_ms: float
-    external_latency_ms: float  # Ping to 8.8.8.8
-    external_loss_pct: float
+    gateway_latency_ms: Optional[float] = None  # None when ping output couldn't be parsed
+    gateway_loss_pct: float = 0.0
+    dns_resolution_ms: float = 0.0
+    external_latency_ms: Optional[float] = None  # None when unknown
+    external_loss_pct: float = 0.0
     wifi_signal_dbm: Optional[int] = None
     wifi_quality: Optional[str] = None
 
@@ -70,21 +70,22 @@ class BaselineStorage:
         gateway_latency_ms, gateway_loss_pct, dns_resolution_ms).
         Missing required fields use 0.0; timestamp is set to now.
         """
-        gateway_latency_ms = float(
-            data.get("gateway_latency_ms", data.get("ping_avg_ms", 0.0))
-        )
+        gl = data.get("gateway_latency_ms", data.get("ping_avg_ms"))
+        gateway_latency_ms = float(gl) if gl is not None else None
         gateway_loss_pct = float(
             data.get("gateway_loss_pct", data.get("ping_loss_pct", 0.0))
         )
         dns_resolution_ms = float(
             data.get("dns_resolution_ms", data.get("dns_time_ms", 0.0))
         )
+        el = data.get("external_latency_ms")
+        external_latency_ms = float(el) if el is not None else None
         snapshot = BaselineSnapshot(
             timestamp=time.time(),
             gateway_latency_ms=gateway_latency_ms,
             gateway_loss_pct=gateway_loss_pct,
             dns_resolution_ms=dns_resolution_ms,
-            external_latency_ms=float(data.get("external_latency_ms", 0.0)),
+            external_latency_ms=external_latency_ms,
             external_loss_pct=float(data.get("external_loss_pct", 0.0)),
             wifi_signal_dbm=data.get("wifi_signal_dbm"),
             wifi_quality=data.get("wifi_quality"),

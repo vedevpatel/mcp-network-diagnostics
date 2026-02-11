@@ -1403,7 +1403,8 @@ async def check_my_connection() -> str:
         issues.append(f"WiFi signal is {wifi.quality} ({wifi.signal_strength_dbm} dBm)")
 
     if gateway.status != "healthy":
-        issues.append(f"Local network {gateway.status} (gateway: {gateway.latency_ms:.1f}ms, {gateway.loss_pct}% loss)")
+        lat_str = f"{gateway.latency_ms:.1f}ms" if gateway.latency_ms is not None else "?ms"
+        issues.append(f"Local network {gateway.status} (gateway: {lat_str}, {gateway.loss_pct}% loss)")
 
     if dns_google.resolution_ms < 0 or dns_cloudflare.resolution_ms < 0:
         issues.append("DNS resolution failing")
@@ -1412,7 +1413,7 @@ async def check_my_connection() -> str:
 
     if external_loss > 5.0:
         issues.append(f"Internet connection unstable ({external_loss}% packet loss)")
-    elif external_latency > 50.0:
+    elif external_latency is not None and external_latency > 50.0:
         issues.append(f"Internet latency high ({external_latency:.0f}ms)")
 
     overall_status = "healthy" if not issues else "degraded"
@@ -1429,7 +1430,7 @@ async def check_my_connection() -> str:
             },
             "local_network": {
                 "gateway_ip": gateway.ip,
-                "latency_ms": round(gateway.latency_ms, 1),
+                "latency_ms": round(gateway.latency_ms, 1) if gateway.latency_ms is not None else None,
                 "loss_pct": round(gateway.loss_pct, 1),
                 "status": gateway.status,
             },
@@ -1438,7 +1439,7 @@ async def check_my_connection() -> str:
                 "cloudflare_ms": round(dns_cloudflare.resolution_ms, 1) if dns_cloudflare.resolution_ms > 0 else "failed",
             },
             "internet": {
-                "latency_to_8888_ms": round(external_latency, 1),
+                "latency_to_8888_ms": round(external_latency, 1) if external_latency is not None else None,
                 "packet_loss_pct": round(external_loss, 1),
             },
         },
@@ -1556,7 +1557,8 @@ async def _analyze_edge_probe(probe) -> dict:
 
     # Check gateway
     if probe.gateway.status != "healthy":
-        issues.append(f"Local network {probe.gateway.status} ({probe.gateway.latency_ms:.0f}ms to gateway)")
+        lat_str = f"{probe.gateway.latency_ms:.0f}ms" if probe.gateway.latency_ms is not None else "?ms"
+        issues.append(f"Local network {probe.gateway.status} ({lat_str} to gateway)")
         if bottleneck == "unknown":
             bottleneck = "local_network"
             confidence = 0.80
@@ -1646,7 +1648,7 @@ async def _analyze_edge_probe(probe) -> dict:
             },
             "local_network": {
                 "status": probe.gateway.status,
-                "latency_ms": round(probe.gateway.latency_ms, 1),
+                "latency_ms": round(probe.gateway.latency_ms, 1) if probe.gateway.latency_ms is not None else None,
             },
             "dns": {
                 "resolution_ms": round(probe.dns.resolution_ms, 1) if probe.dns else None,
@@ -1783,10 +1785,10 @@ async def record_baseline() -> str:
     return json.dumps({
         "status": "baseline_recorded",
         "metrics": {
-            "gateway_latency_ms": round(snapshot.gateway_latency_ms, 1),
+            "gateway_latency_ms": round(snapshot.gateway_latency_ms, 1) if snapshot.gateway_latency_ms is not None else None,
             "gateway_loss_pct": round(snapshot.gateway_loss_pct, 1),
             "dns_resolution_ms": round(snapshot.dns_resolution_ms, 1),
-            "external_latency_ms": round(snapshot.external_latency_ms, 1),
+            "external_latency_ms": round(snapshot.external_latency_ms, 1) if snapshot.external_latency_ms is not None else None,
             "external_loss_pct": round(snapshot.external_loss_pct, 1),
             "wifi_signal_dbm": snapshot.wifi_signal_dbm,
         },

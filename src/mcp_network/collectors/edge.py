@@ -21,7 +21,7 @@ from urllib.parse import urlparse
 class GatewayResult:
     """Local gateway ping results."""
     ip: str
-    latency_ms: float
+    latency_ms: Optional[float]  # None when ping output couldn't be parsed
     loss_pct: float
     status: str  # "healthy", "degraded", "unreachable"
 
@@ -135,7 +135,7 @@ class EdgeCollector:
         if not gateway_ip:
             return GatewayResult(
                 ip="unknown",
-                latency_ms=0.0,
+                latency_ms=None,
                 loss_pct=100.0,
                 status="unreachable",
             )
@@ -144,6 +144,8 @@ class EdgeCollector:
 
         if loss >= 50.0:
             status = "unreachable"
+        elif latency is None:
+            status = "degraded"  # Unknown latency
         elif latency > 10.0 or loss > 5.0:
             status = "degraded"
         else:
@@ -228,7 +230,7 @@ class EdgeCollector:
             return self._parse_ping_output(output)
 
         except (asyncio.TimeoutError, Exception):
-            return (0.0, 100.0)  # Complete failure
+            return (None, 100.0)  # Unknown latency, total loss
 
     async def _probe_http(self, url: str) -> Optional[HTTPResult]:
         """Measure HTTP timing breakdown using curl."""
@@ -698,35 +700,35 @@ class EdgeCollector:
 
         return None
 
-    def _parse_ping_output(self, output: str) -> tuple[float, float]:
-        """Parse ping output to extract latency and loss."""
+    def _parse_ping_output(self, output: str) -> tuple[Optional[float], float]:
+        """Parse ping output to extract latency and loss.
+
+        Returns:
+            (latency_ms, loss_pct). latency_ms is None if no average line was parsed
+            (so we don't show 0.0 when the value is actually unknown).
+        """
         lines = output.split("\n")
 
         # Find packet loss line
         loss_pct = 100.0
         for line in lines:
             if "packet loss" in line.lower() or "lost" in line.lower():
-                # Extract percentage
                 import re
                 match = re.search(r'(\d+(?:\.\d+)?)%', line)
                 if match:
                     loss_pct = float(match.group(1))
                 break
 
-        # Find average latency
-        latency_ms = 0.0
+        # Find average latency; use None if not found so callers can show "n/a"
+        latency_ms: Optional[float] = None
         for line in lines:
             if "avg" in line.lower() or "average" in line.lower():
-                # Unix: min/avg/max/stddev = 1.234/2.345/3.456/0.123 ms
-                # Windows: Average = 12ms
                 import re
                 if "=" in line:
-                    # Windows style
                     match = re.search(r'=\s*(\d+(?:\.\d+)?)ms', line, re.IGNORECASE)
                     if match:
                         latency_ms = float(match.group(1))
                 else:
-                    # Unix style - look for avg value
                     match = re.search(r'[\d.]+/(\d+(?:\.\d+)?)/[\d.]+', line)
                     if match:
                         latency_ms = float(match.group(1))
