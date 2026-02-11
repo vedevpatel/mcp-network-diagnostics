@@ -23,8 +23,9 @@ def test_db(tmp_path):
 
 @pytest.fixture
 def client(test_db, monkeypatch):
-    """Create test client with mocked database."""
-    # Mock the get_database function to return our test database
+    """Create test client with mocked database and tenant=default for test data."""
+    from mcp_network.storage.tenant import set_tenant_id
+
     def mock_get_database():
         return test_db
 
@@ -43,6 +44,14 @@ def client(test_db, monkeypatch):
     monkeypatch.setattr(
         "mcp_network.dashboard.routes.intents.get_database",
         mock_get_database
+    )
+    # Use tenant "default" so repo queries see test data (saved with tenant_id="default")
+    original_set_tenant = set_tenant_id
+    def _set_default_tenant(identity):
+        original_set_tenant("default")
+    monkeypatch.setattr(
+        "mcp_network.dashboard.app.set_tenant_id",
+        _set_default_tenant,
     )
 
     app = create_app()
