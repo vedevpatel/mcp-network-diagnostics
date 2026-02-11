@@ -29,42 +29,121 @@
             margin-bottom: 24px;
         }
 
-        nav {
+        nav.top-nav {
             display: flex;
-            gap: 24px;
             align-items: center;
+            gap: 14px;
+            flex-wrap: wrap;
         }
 
-        nav h1 {
-            font-size: 20px;
-            font-weight: 600;
-            margin-right: auto;
+        .nav-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex: 0 0 auto;
         }
 
-        nav a {
+        .nav-brand {
+            font-size: 18px;
+            font-weight: 650;
+            color: #f0f6fc;
+            text-decoration: none;
+            letter-spacing: 0.01em;
+            white-space: nowrap;
+        }
+
+        .nav-brand:hover {
+            text-decoration: none;
+            color: #f0f6fc;
+        }
+
+        .nav-links {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex: 1 1 auto;
+            min-width: 280px;
+            flex-wrap: wrap;
+        }
+
+        .nav-link {
             color: #8b949e;
             text-decoration: none;
-            padding: 8px 12px;
-            border-radius: 6px;
-            transition: all 0.2s;
+            padding: 7px 10px;
+            border-radius: 8px;
+            transition: background 0.15s ease, color 0.15s ease;
         }
 
-        nav a:hover, nav a.active {
+        .nav-link:hover, .nav-link.active {
             background: #21262d;
             color: #e6edf3;
+            text-decoration: none;
         }
 
-        .nav-identity {
-            margin-left: auto;
+        .nav-right {
             display: flex;
             align-items: center;
             gap: 12px;
-            font-size: 14px;
-            color: #8b949e;
+            margin-left: auto;
+            flex: 0 0 auto;
         }
-        .nav-identity .guest-label { color: #8b949e; }
-        .nav-identity .guest-hint { font-size: 12px; color: #6e7681; margin-left: 4px; }
-        .nav-identity a.sign-in { color: #58a6ff; }
+
+        .nav-identity {
+            display: flex;
+            flex-direction: column;
+            line-height: 1.15;
+            min-width: 0;
+        }
+
+        .nav-identity .guest-label {
+            font-size: 13px;
+            color: #8b949e;
+            white-space: nowrap;
+        }
+
+        .nav-identity .guest-hint {
+            font-size: 12px;
+            color: #6e7681;
+            white-space: nowrap;
+        }
+
+        .nav-sign-in {
+            flex-shrink: 0;
+            white-space: nowrap;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 7px 12px;
+            border-radius: 999px;
+            border: 1px solid rgba(88, 166, 255, 0.35);
+            background: rgba(88, 166, 255, 0.10);
+            color: #58a6ff;
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 0.01em;
+            transition: background 0.15s ease, border-color 0.15s ease;
+        }
+
+        .nav-sign-in:hover {
+            background: rgba(88, 166, 255, 0.14);
+            border-color: rgba(88, 166, 255, 0.55);
+            text-decoration: none;
+        }
+
+        @media (max-width: 720px) {
+            .nav-links {
+                flex-basis: 100%;
+                order: 3;
+            }
+
+            .nav-right {
+                width: 100%;
+                order: 2;
+                margin-left: 0;
+                justify-content: space-between;
+            }
+        }
 
         .stats-grid {
             display: grid;
@@ -199,21 +278,30 @@
 <body>
     <header>
         <div class="container">
-            <nav>
-                <h1>🌐 MCP Network Diagnostics</h1>
-                <a href="/" class="{% if request.url.path == '/' %}active{% endif %}">Overview</a>
-                <a href="/tools" class="{% if '/tools' in request.url.path %}active{% endif %}">Tools</a>
-                <a href="/devices" class="{% if '/devices' in request.url.path %}active{% endif %}">Devices</a>
-                <a href="/incidents" class="{% if '/incidents' in request.url.path %}active{% endif %}">Incidents</a>
-                <a href="/intents" class="{% if '/intents' in request.url.path %}active{% endif %}">Intents</a>
-                <a href="/developer" class="{% if '/developer' in request.url.path %}active{% endif %}">Developer</a>
-                <a href="/settings" class="{% if '/settings' in request.url.path %}active{% endif %}">Settings</a>
-                <div class="nav-identity">
+            <nav class="top-nav" aria-label="Primary">
+                <div class="nav-left">
+                    <a class="nav-brand" href="/">MCP Network Diagnostics</a>
+                </div>
+
+                <div class="nav-links" role="navigation" aria-label="Main">
+                    <a href="/" class="nav-link {% if request.url.path == '/' %}active{% endif %}">Overview</a>
+                    <a href="/tools" class="nav-link {% if '/tools' in request.url.path %}active{% endif %}">Tools</a>
+                    <a href="/devices" class="nav-link {% if '/devices' in request.url.path %}active{% endif %}">Devices</a>
+                    <a href="/incidents" class="nav-link {% if '/incidents' in request.url.path %}active{% endif %}">Incidents</a>
+                    <a href="/intents" class="nav-link {% if '/intents' in request.url.path %}active{% endif %}">Intents</a>
+                    <a href="/developer" class="nav-link {% if '/developer' in request.url.path %}active{% endif %}">Developer</a>
+                    <a href="/settings" class="nav-link {% if '/settings' in request.url.path %}active{% endif %}">Settings</a>
+                </div>
+
+                <div class="nav-right">
                     {% if request.state.consumer_identity %}
-                    <span class="guest-label">Using as guest</span><span class="guest-hint">(session-only data, no account)</span>
-                    <a href="#" class="sign-in">Sign in</a>
+                    <div class="nav-identity">
+                        <span class="guest-label">Using as guest</span>
+                        <span class="guest-hint" title="session-only data, no account">(session-only)</span>
+                    </div>
+                    <a href="#" class="nav-sign-in">Sign in</a>
                     {% else %}
-                    <a href="/" class="sign-in">Continue as guest</a>
+                    <a href="/" class="nav-sign-in">Continue as guest</a>
                     {% endif %}
                 </div>
             </nav>

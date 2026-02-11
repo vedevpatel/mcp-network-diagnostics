@@ -202,6 +202,26 @@ def test_health_check_endpoint(client, sample_devices, sample_incidents):
     assert b"%" in response.content
 
 
+def test_status_dev_endpoint(client):
+    """Test /status/dev returns JSON with config info for developers."""
+    response = client.get("/status/dev")
+    assert response.status_code == 200
+    data = response.json()
+    # Required fields for developers
+    assert "transport" in data
+    assert "mcp_transports_available" in data
+    assert "collector_mode" in data
+    assert "features" in data
+    assert "rate_limits" in data
+    # Features should include key capabilities
+    assert "agent" in data["features"]
+    assert "baselines" in data["features"]
+    assert "rate_limiting" in data["features"]
+    # Rate limits should have values
+    assert data["rate_limits"]["consumer_per_minute"] > 0
+    assert data["rate_limits"]["global_per_minute"] > 0
+
+
 def test_guest_session_shows_using_as_guest(client):
     """Test that after receiving session cookie, next request shows 'Using as guest'."""
     r1 = client.get("/")

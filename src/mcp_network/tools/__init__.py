@@ -1384,18 +1384,14 @@ async def check_my_connection() -> str:
 
     collector = EdgeCollector()
 
-    # Test gateway
-    gateway = await collector._probe_gateway()
-
-    # Test DNS
-    dns_google = await collector._probe_dns("google.com")
-    dns_cloudflare = await collector._probe_dns("one.one.one.one")
-
-    # Test external ping
-    external_latency, external_loss = await collector._ping("8.8.8.8", count=5)
-
-    # Get WiFi stats
-    wifi = await collector._get_wifi_stats()
+    # Run all probes in parallel for faster results
+    gateway, dns_google, dns_cloudflare, (external_latency, external_loss), wifi = await asyncio.gather(
+        collector._probe_gateway(),
+        collector._probe_dns("google.com"),
+        collector._probe_dns("one.one.one.one"),
+        collector._ping("8.8.8.8", count=3),
+        collector._get_wifi_stats(),
+    )
 
     # Determine overall health
     issues = []

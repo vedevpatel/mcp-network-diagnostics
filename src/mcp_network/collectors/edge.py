@@ -149,7 +149,7 @@ class EdgeCollector:
                 status="unreachable",
             )
 
-        latency, loss = await self._ping(gateway_ip, count=5)
+        latency, loss = await self._ping(gateway_ip, count=3)
 
         if loss >= 50.0:
             status = "unreachable"

@@ -15,7 +15,7 @@ templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templa
 
 
 @router.get("/", response_class=HTMLResponse)
-async def settings_page(request: Request, _auth=Depends(require_dashboard_auth)):
+async def settings_page(request: Request, api_key=Depends(require_dashboard_auth)):
     """Show settings page."""
     # Get API keys
     auth_mgr = AuthManager()
@@ -28,5 +28,6 @@ async def settings_page(request: Request, _auth=Depends(require_dashboard_auth))
     return templates.TemplateResponse("settings.html", {
         "request": request,
         "api_keys": api_keys,
+        "api_key": api_key,
         "notification_channels": list(router_instance.channels.keys()),
     })

@@ -1,6 +1,7 @@
 """Overview dashboard route."""
 
 import json
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -14,12 +15,25 @@ from mcp_network.tools import check_my_connection
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
 
+# TTL cache for connection status to avoid re-probing on rapid page loads
+_connection_cache: dict = {"data": None, "expires": 0.0}
+CACHE_TTL_SECONDS = 10
+
 
 async def _get_connection_status() -> dict:
-    """Run a consumer-mode health check and return parsed JSON."""
-    # Reuse the existing MCP tool implementation so logic stays in one place.
+    """Run a consumer-mode health check and return parsed JSON.
+    
+    Results are cached for CACHE_TTL_SECONDS to speed up page navigation.
+    """
+    now = time.time()
+    if _connection_cache["data"] and now < _connection_cache["expires"]:
+        return _connection_cache["data"]
+    
     raw = await check_my_connection()
-    return json.loads(raw)
+    data = json.loads(raw)
+    _connection_cache["data"] = data
+    _connection_cache["expires"] = now + CACHE_TTL_SECONDS
+    return data
 
 
 @router.get("/", response_class=HTMLResponse)

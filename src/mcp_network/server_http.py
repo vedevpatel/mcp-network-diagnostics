@@ -69,6 +69,12 @@ class AuthMiddleware:
 
         scope["state"] = scope.get("state", {})
         scope["state"]["api_key"] = api_key
+        # Operator/admin: scope storage and tools to this key's tenant
+        if api_key is not None:
+            from mcp_network.security import Role
+            from mcp_network.storage.tenant import set_tenant_id
+            if api_key.role in (Role.OPERATOR, Role.ADMIN, Role.SUPERUSER):
+                set_tenant_id(api_key.tenant_id or api_key.key_id)
         await self.app(scope, receive, send)
 
 

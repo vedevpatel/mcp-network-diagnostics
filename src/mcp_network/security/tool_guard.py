@@ -40,6 +40,7 @@ CONSUMER_TOOLS = {
     "check_my_connection",
     "why_is_it_slow",
     "trace_path",
+    "scan_local_network",
     "run_speedtest",
     "record_baseline",
     "compare_to_baseline",

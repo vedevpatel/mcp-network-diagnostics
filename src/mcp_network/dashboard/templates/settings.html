@@ -3,6 +3,13 @@
 {% block title %}Settings - MCP Network Diagnostics{% endblock %}
 
 {% block content %}
+{% if api_key and api_key.role.value in ('operator', 'admin', 'superuser') %}
+<div class="card">
+    <div class="card-title">Operator workspace</div>
+    <p style="color: #8b949e; margin-bottom: 16px;">Data and tools are scoped to this tenant.</p>
+    <p><strong>Tenant:</strong> {{ api_key.tenant_id or api_key.key_id }}</p>
+</div>
+{% endif %}
 <div class="card">
     <div class="card-title">API Keys</div>
     <p style="color: #8b949e; margin-bottom: 16px;">Manage API keys for MCP access</p>
