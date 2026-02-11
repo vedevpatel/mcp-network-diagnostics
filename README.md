@@ -69,33 +69,60 @@ uv run python -m mcp_network.dashboard
 
 With Docker: `docker compose up -d` then open http://localhost:8080.
 
-### Consumer Mode (No Setup Required)
+### MCP Integration (Claude Desktop)
 
-**Claude Desktop Config** (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+Add the MCP server to Claude Desktop by editing `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows).
+
+#### Consumer Mode (No Setup Required)
+
+Diagnose your own network — no credentials, no config files:
+
 ```json
 {
   "mcpServers": {
     "network-diagnostics": {
       "command": "/path/to/uv",
-      "args": [
-        "--directory",
-        "/path/to/mcp-network-diagnostics",
-        "run",
-        "mcp-network"
-      ]
+      "args": ["--directory", "/path/to/mcp-network-diagnostics", "run", "mcp-network"]
     }
   }
 }
 ```
 
-**Restart Claude Desktop**, then try:
-- `check_my_connection()` - Full network health check
-- `why_is_it_slow("zoom.us")` - Diagnose latency to a target
-- `trace_path("8.8.8.8")` - Traceroute with AS info
-- `record_baseline()` - Start tracking normal behavior
-- `compare_to_baseline()` - Detect anomalies vs baseline
-- `set_intent("Zoom calls should never lag")` - Start monitoring
-- `plan_goal("Keep Zoom responsive during work hours")` - Generate action plan
+#### Operator Mode (Simulated — Testing/Demos)
+
+Try device diagnostics with a fake 10-router topology:
+
+```json
+{
+  "mcpServers": {
+    "network-diagnostics": {
+      "command": "/path/to/uv",
+      "args": ["--directory", "/path/to/mcp-network-diagnostics", "run", "mcp-network", "--collector", "simulated"]
+    }
+  }
+}
+```
+
+**Restart Claude Desktop** after editing the config.
+
+### Key MCP Tools
+
+| Tool | Use Case |
+|------|----------|
+| `check_my_connection()` | Quick health check — WiFi, gateway, DNS, internet latency |
+| `why_is_it_slow("zoom.us")` | Diagnose slow connections — pinpoints bottleneck location |
+| `trace_path("8.8.8.8")` | Traceroute with AS/provider info per hop |
+| `scan_local_network()` | List devices on your LAN (from ARP table) |
+| `record_baseline()` / `compare_to_baseline()` | Track normal behavior, detect anomalies |
+| `set_intent("Zoom should stay under 100ms")` | Continuous monitoring with natural language goals |
+
+**Operator-only tools** (requires `--collector simulated` or SSH/Prometheus):
+| Tool | Use Case |
+|------|----------|
+| `list_devices()` / `get_device_status("R1")` | View topology and device health |
+| `diagnose_latency("R1", "R5")` | AI-powered hop-by-hop latency diagnosis |
+| `predict_trends()` | Forecast metric breaches (needs 5+ samples) |
+| `detect_anomalies()` | Statistical anomaly detection across devices |
 
 ### Operator Mode - Simulated (Testing)
 
@@ -264,6 +291,125 @@ thresholds:  # Optional, overrides defaults
 
 **`.local.yaml` convention:** Files matching `*_topology.local.yaml` are gitignored for credentials.
 
+## Transports
+
+The MCP server supports two transports:
+
+| Transport | Use Case | How to Connect |
+|-----------|----------|----------------|
+| **stdio** (default) | Claude Desktop, local MCP clients | Add to `claude_desktop_config.json` |
+| **streamable-http** | Remote API access, web integrations, multi-client | HTTP endpoint at `http://host:port/mcp` |
+
+### stdio Transport
+
+Default for Claude Desktop. The MCP client spawns the server as a subprocess and communicates over stdin/stdout.
+
+```bash
+# Run directly (for testing)
+mcp-network --collector simulated
+
+# Claude Desktop config points to the command
+```
+
+### HTTP Transport
+
+For remote access or when multiple clients need to connect to the same server.
+
+```bash
+mcp-network --transport streamable-http --port 8000 --path /mcp
+# Endpoint: http://localhost:8000/mcp
+```
+
+Clients connect via HTTP POST to the `/mcp` endpoint using the MCP JSON-RPC protocol.
+
+## HTTP MCP Deployment
+
+For production HTTP MCP deployments:
+
+### Basic Usage
+
+```bash
+# Start HTTP MCP server (no auth)
+uv run mcp-network --transport streamable-http --port 8000 --path /mcp
+
+# With authentication required
+uv run mcp-network --transport streamable-http --port 8000 --require-auth
+```
+
+### Authentication & API Keys
+
+When `--require-auth` is set, clients must provide an API key:
+
+```bash
+curl -X POST http://localhost:8000/mcp \
+  -H "Authorization: Bearer mcp_YOUR_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
+
+Create API keys via:
+- The `create_api_key` MCP tool (superuser role)
+- The dashboard Settings page (when using API keys file)
+- Directly in `~/.mcp_network/api_keys.json`
+
+**Roles**: `consumer` (edge tools only) → `operator` (+ device access) → `admin` (+ agent control) → `superuser` (full access). See [SECURITY.md](SECURITY.md) for details.
+
+### Rate Limiting
+
+- **Per-key limits**: Based on role (consumer: 60/min, operator: 120/min, admin: 300/min)
+- **Global limit**: 1000 req/min total (override with `MCP_NETWORK_GLOBAL_RPM` env var)
+- Exceeded limits return HTTP 429 with `Retry-After` header
+
+### Docker Deployment
+
+```bash
+# Build and run
+docker compose up -d
+
+# Access dashboard at http://localhost:8080
+```
+
+For HTTP MCP behind a reverse proxy:
+
+```yaml
+# docker-compose.override.yml
+services:
+  mcp-http:
+    build: .
+    command: ["uv", "run", "mcp-network", "--transport", "streamable-http", "--port", "8000", "--require-auth"]
+    ports:
+      - "8000:8000"
+    environment:
+      - MCP_NETWORK_SESSION_SECRET=${SESSION_SECRET}
+    volumes:
+      - ./api_keys.json:/root/.mcp_network/api_keys.json:ro
+```
+
+Put nginx or Caddy in front for TLS termination:
+
+```nginx
+# nginx.conf snippet
+location /mcp {
+    proxy_pass http://mcp-http:8000/mcp;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+}
+```
+
+### Security Considerations
+
+When deploying HTTP MCP:
+
+- **Always use TLS** in production (terminate at reverse proxy)
+- **Set a strong session secret**: `export MCP_NETWORK_SESSION_SECRET=$(openssl rand -hex 32)`
+- **Configure CORS**: `MCP_NETWORK_CORS_ORIGINS=https://your-app.com` (defaults to same-origin only)
+- **SSRF protection**: Consumer tools validate destinations to prevent internal network scanning
+- **Command injection**: SSH collector validates commands are read-only (`show`, `display`, etc.)
+- **Rate limiting**: Enabled by default; tune via env vars
+
+See [SECURITY.md](SECURITY.md) for the full threat model and security architecture.
+
 ## Development
 
 ```bash
@@ -279,6 +425,24 @@ mypy src/
 # Linting
 ruff check src/
 ```
+
+### Quick Smoke Tests
+
+While the dashboard is running (`uv run python -m mcp_network.dashboard`):
+
+```bash
+# Test all dashboard endpoints, rate limiting, session handling
+./test_dashboard_curl.sh
+
+# Test with lower rate limit for faster rate-limit verification
+CONSUMER_RATE_LIMIT_PER_MINUTE=10 ./test_dashboard_curl.sh
+```
+
+### Developer Resources
+
+- **[docs/MCP_QUICKSTART.md](docs/MCP_QUICKSTART.md)** — 5-minute guide to get Claude Desktop connected
+- **[examples/mcp_client_example.py](examples/mcp_client_example.py)** — Programmatic MCP client usage
+- **[examples/http_mcp_examples.sh](examples/http_mcp_examples.sh)** — curl examples for HTTP MCP API
 
 ## Test Coverage
 

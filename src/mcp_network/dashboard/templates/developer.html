@@ -5,27 +5,62 @@
 {% block content %}
 <div class="developer-page">
     <h2 class="developer-title">Developer / API</h2>
-    <p class="developer-intro">Use the MCP server over HTTP with an API key. Your key's role determines which tools you can call.</p>
+    <p class="developer-intro">Integrate MCP Network Diagnostics into your application via stdio (Claude Desktop) or HTTP transport.</p>
+
+    <section class="dev-section">
+        <h3>Quick Start: Claude Desktop</h3>
+        <p>Add to your Claude Desktop config (<code>~/Library/Application Support/Claude/claude_desktop_config.json</code>):</p>
+        
+        <h4>Consumer Mode (Edge diagnostics only)</h4>
+        <pre class="dev-code">{
+  "mcpServers": {
+    "network-diagnostics": {
+      "command": "/path/to/uv",
+      "args": ["--directory", "/path/to/mcp-network-diagnostics", "run", "mcp-network"]
+    }
+  }
+}</pre>
+        <p>Tools available: <code>check_my_connection</code>, <code>why_is_it_slow</code>, <code>trace_path</code>, <code>scan_local_network</code>, <code>record_baseline</code>, <code>compare_to_baseline</code></p>
+
+        <h4>Operator Mode (Device diagnostics)</h4>
+        <pre class="dev-code">{
+  "mcpServers": {
+    "network-diagnostics": {
+      "command": "/path/to/uv",
+      "args": ["--directory", "/path/to/mcp-network-diagnostics", "run", "mcp-network", "--collector", "simulated"]
+    }
+  }
+}</pre>
+        <p>Adds: <code>list_devices</code>, <code>get_device_status</code>, <code>diagnose_latency</code>, <code>predict_trends</code>, <code>detect_anomalies</code></p>
+    </section>
+
+    <section class="dev-section">
+        <h3>HTTP Transport</h3>
+        <p>For remote API access or multi-client scenarios, use HTTP transport:</p>
+        <pre class="dev-code"># Start HTTP MCP server
+uv run mcp-network --transport streamable-http --port 8000 --path /mcp
+
+# With authentication required
+uv run mcp-network --transport streamable-http --port 8000 --require-auth</pre>
+        <p>Endpoint: <code>http://localhost:8000/mcp</code></p>
+        <p>Rate limits: Per-key (based on role) + global (default 1000 req/min, set <code>MCP_NETWORK_GLOBAL_RPM</code> to override).</p>
+    </section>
 
     <section class="dev-section">
         <h3>Authentication</h3>
-        <p>Send your API key with every request:</p>
+        <p>When <code>--require-auth</code> is set, send your API key with every request:</p>
         <pre class="dev-code">Authorization: Bearer mcp_&lt;key_id&gt;_&lt;secret&gt;</pre>
-        <p>Or use the <code>X-API-Key</code> header with the full key string.</p>
-        <p>Create keys via the <code>create_api_key</code> tool (superuser) or from the dashboard <a href="/settings">Settings</a> when using the API keys file.</p>
+        <p>Create keys via:</p>
+        <ul>
+            <li>The <code>create_api_key</code> MCP tool (requires superuser role)</li>
+            <li>The dashboard <a href="/settings">Settings</a> page (when using API keys file)</li>
+            <li>Directly in <code>~/.mcp_network/api_keys.json</code></li>
+        </ul>
     </section>
 
     <section class="dev-section">
-        <h3>HTTP endpoint</h3>
-        <p>When the server is run with <code>--transport streamable-http</code>:</p>
-        <pre class="dev-code">mcp-network --transport streamable-http --port 8000 --path /mcp
-# Endpoint: http://localhost:8000/mcp</pre>
-        <p>Use <code>--require-auth</code> to enforce API keys. Rate limits apply per key and globally (default 1000 req/min total).</p>
-    </section>
-
-    <section class="dev-section">
-        <h3>Roles and tools</h3>
-        <p>Keys are assigned a role. Each role can call its own tools plus all tools from lower roles.</p>
+        <h3>Roles and Tools</h3>
+        <p>Keys are assigned a role. Each role inherits tools from lower roles.</p>
         <ul class="role-list">
             <li><strong>consumer</strong> – Edge diagnostics only (no device access)</li>
             <li><strong>operator</strong> – + Device status, path, latency, read-only commands</li>
@@ -33,7 +68,7 @@
             <li><strong>superuser</strong> – + Create API keys, full command access</li>
         </ul>
 
-        <h4>Tools by role</h4>
+        <h4>Tools by Role</h4>
         <div class="tools-by-role">
             {% for role, tools in role_tools.items() %}
             <div class="role-block">
@@ -49,13 +84,37 @@
     </section>
 
     <section class="dev-section">
-        <h3>Example</h3>
-        <pre class="dev-code"># List tools (MCP protocol)
+        <h3>Example API Calls</h3>
+        <pre class="dev-code"># List available tools
 curl -X POST http://localhost:8000/mcp \
   -H "Authorization: Bearer mcp_YOUR_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'</pre>
-        <p>Clients that support MCP over HTTP (e.g. Claude Desktop with streamable-http URL) can connect to <code>http://your-host:8000/mcp</code> and pass the API key in the client config.</p>
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+
+# Call a tool
+curl -X POST http://localhost:8000/mcp \
+  -H "Authorization: Bearer mcp_YOUR_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"check_my_connection","arguments":{}}}'</pre>
+    </section>
+
+    <section class="dev-section">
+        <h3>Server Status</h3>
+        <p>Check enabled transports and configuration:</p>
+        <pre class="dev-code">curl http://localhost:8080/status/dev</pre>
+        <p>Returns JSON with transport type, collector mode, and feature flags.</p>
+    </section>
+
+    <section class="dev-section">
+        <h3>Security Notes</h3>
+        <ul>
+            <li><strong>TLS</strong>: Use a reverse proxy (nginx, Caddy) for HTTPS in production</li>
+            <li><strong>Session secret</strong>: Set <code>MCP_NETWORK_SESSION_SECRET</code> for secure cookies</li>
+            <li><strong>CORS</strong>: Set <code>MCP_NETWORK_CORS_ORIGINS</code> to allow cross-origin requests</li>
+            <li><strong>SSRF protection</strong>: Consumer tools validate destinations</li>
+            <li><strong>Command injection</strong>: SSH collector validates read-only commands only</li>
+        </ul>
+        <p>See <a href="https://github.com/vedevpatel/mcp-network-diagnostics/blob/main/SECURITY.md" target="_blank">SECURITY.md</a> for the full threat model.</p>
     </section>
 </div>
 {% endblock %}

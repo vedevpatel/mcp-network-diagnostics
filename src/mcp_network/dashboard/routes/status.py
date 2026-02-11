@@ -1,10 +1,11 @@
 """System status for the dashboard: agent and collection health."""
 
 import json
+import os
 from pathlib import Path
 
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
 router = APIRouter()
@@ -89,3 +90,62 @@ async def status_partial(request: Request):
         "agent_class": agent_class,
         "collection_html": collection_html,
     })
+
+
+@router.get("/status/dev", response_class=JSONResponse)
+async def dev_status(request: Request):
+    """Return developer-focused status info: transports, config, features.
+    
+    Helps developers debug deployments and verify configuration.
+    """
+    # Detect collector mode
+    collector_mode = "consumer"  # Dashboard runs in consumer mode by default
+    try:
+        from mcp_network.tools import list_devices
+        # If list_devices is available and returns devices, we're in operator mode
+        result = await list_devices()
+        data = json.loads(result)
+        if data.get("devices"):
+            collector_mode = "operator"
+    except Exception:
+        pass
+    
+    # Check agent availability
+    agent_available = False
+    try:
+        from mcp_network.tools import agent_status
+        result = await agent_status()
+        data = json.loads(result)
+        agent_available = data.get("status") != "not_initialized" or True  # Available if we can call it
+    except PermissionError:
+        agent_available = False
+    except Exception:
+        agent_available = True  # Tool exists, just errored
+    
+    # Environment-based config
+    config = {
+        "transport": "dashboard",  # Dashboard uses its own FastAPI server
+        "mcp_transports_available": ["stdio", "streamable-http"],
+        "collector_mode": collector_mode,
+        "features": {
+            "agent": agent_available,
+            "baselines": True,
+            "rate_limiting": True,
+            "guest_sessions": True,
+        },
+        "rate_limits": {
+            "consumer_per_minute": int(os.getenv("CONSUMER_RATE_LIMIT_PER_MINUTE", "60")),
+            "global_per_minute": int(os.getenv("MCP_NETWORK_GLOBAL_RPM", "1000")),
+        },
+        "auth": {
+            "dashboard_auth_required": os.getenv("MCP_NETWORK_DASHBOARD_REQUIRE_AUTH", "0") == "1",
+            "cors_origins": os.getenv("MCP_NETWORK_CORS_ORIGINS", ""),
+        },
+        "docs": {
+            "readme": "https://github.com/vedevpatel/mcp-network-diagnostics#readme",
+            "mcp_quickstart": "https://github.com/vedevpatel/mcp-network-diagnostics/blob/main/docs/MCP_QUICKSTART.md",
+            "security": "https://github.com/vedevpatel/mcp-network-diagnostics/blob/main/SECURITY.md",
+        },
+    }
+    
+    return JSONResponse(config)
