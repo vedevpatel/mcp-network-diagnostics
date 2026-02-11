@@ -9,6 +9,7 @@ Works on macOS, Linux, and Windows.
 import asyncio
 import json
 import platform
+import re
 import socket
 import subprocess
 import time
@@ -78,6 +79,14 @@ class ProbeResult:
     http: Optional[HTTPResult]
     wifi: Optional[WifiResult]
     timestamp: float = field(default_factory=time.time)
+
+
+@dataclass
+class LocalDevice:
+    """Device seen on the local network (from ARP or scan)."""
+    ip: str
+    mac: Optional[str] = None
+    hostname: Optional[str] = None
 
 
 class EdgeCollector:
@@ -650,6 +659,138 @@ class EdgeCollector:
         except Exception:
             pass
         return None
+
+    async def scan_local_network(self) -> list[LocalDevice]:
+        """Discover devices on the local network from the ARP table.
+
+        Uses the system ARP cache (no broadcast ping sweep), so only hosts
+        the machine has recently communicated with are listed. Works on
+        macOS, Linux, and Windows.
+
+        Returns:
+            List of LocalDevice (ip, optional mac, optional hostname).
+        """
+        entries = await self._get_arp_table()
+        gateway_ip = self._get_default_gateway()
+
+        def in_private_subnet(ip: str) -> bool:
+            try:
+                octets = [int(x) for x in ip.split(".")]
+                if len(octets) != 4:
+                    return False
+                if octets[0] == 10:
+                    return True
+                if octets[0] == 172 and 16 <= octets[1] <= 31:
+                    return True
+                if octets[0] == 192 and octets[1] == 168:
+                    return True
+                return False
+            except (ValueError, IndexError):
+                return False
+
+        devices: list[LocalDevice] = []
+        seen: set[str] = set()
+        for ip, mac, hostname in entries:
+            if not ip or ip in seen:
+                continue
+            if not self._is_ip(ip):
+                continue
+            if gateway_ip and in_private_subnet(gateway_ip) and not in_private_subnet(ip):
+                continue
+            seen.add(ip)
+            devices.append(LocalDevice(ip=ip, mac=mac, hostname=hostname or None))
+
+        return sorted(devices, key=lambda d: self._ip_sort_key(d.ip))
+
+    def _ip_sort_key(self, ip: str) -> tuple:
+        """Sort key for IPs (numeric)."""
+        try:
+            return tuple(int(x) for x in ip.split("."))
+        except (ValueError, AttributeError):
+            return (0, 0, 0, 0)
+
+    async def _get_arp_table(self) -> list[tuple[str, Optional[str], Optional[str]]]:
+        """Read ARP table; return list of (ip, mac, hostname)."""
+        try:
+            if self.platform == "Windows":
+                return self._parse_arp_windows(await self._run_arp_command_windows())
+            if self.platform == "Darwin":
+                return self._parse_arp_macos(await self._run_arp_command(["arp", "-a"]))
+            # Linux: ip neigh or arp -n
+            out = await self._run_arp_command(["ip", "neigh", "show"])
+            if out:
+                return self._parse_arp_linux_ip_neigh(out)
+            out = await self._run_arp_command(["arp", "-n"])
+            return self._parse_arp_linux_arp(out) if out else []
+        except Exception:
+            return []
+
+    async def _run_arp_command(self, cmd: list[str]) -> str:
+        """Run command and return stdout."""
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=10.0)
+            return stdout.decode() if stdout else ""
+        except (asyncio.TimeoutError, Exception):
+            return ""
+
+    async def _run_arp_command_windows(self) -> str:
+        """Run arp -a on Windows."""
+        return await self._run_arp_command(["arp", "-a"])
+
+    def _parse_arp_macos(self, output: str) -> list[tuple[str, Optional[str], Optional[str]]]:
+        # e.g. "hostname (192.168.1.1) at aa:bb:cc:dd:ee:ff on en0"
+        # or "? (192.168.1.1) at aa:bb:cc:dd:ee:ff on en0"
+        result = []
+        pattern = re.compile(
+            r"(?:\?|([^\s(]+))\s*\((\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\)\s+at\s+([0-9a-fA-F:]+)"
+        )
+        for line in output.splitlines():
+            m = pattern.search(line)
+            if m:
+                hostname, ip, mac = m.group(1), m.group(2), m.group(3)
+                result.append((ip, mac, hostname.strip() if hostname else None))
+        return result
+
+    def _parse_arp_linux_ip_neigh(self, output: str) -> list[tuple[str, Optional[str], Optional[str]]]:
+        # 192.168.1.1 lladdr aa:bb:cc:dd:ee:ff REACHABLE
+        result = []
+        pattern = re.compile(r"(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\s+lladdr\s+([0-9a-fA-F:]+)")
+        for line in output.splitlines():
+            m = pattern.search(line)
+            if m:
+                result.append((m.group(1), m.group(2), None))
+        return result
+
+    def _parse_arp_linux_arp(self, output: str) -> list[tuple[str, Optional[str], Optional[str]]]:
+        # Address                  HWtype  HWaddress           Flags Mask            Iface
+        # 192.168.1.1              ether   aa:bb:cc:dd:ee:ff   C                     en0
+        lines = output.splitlines()
+        result = []
+        for line in lines[1:]:  # skip header
+            parts = line.split()
+            if len(parts) >= 3 and self._is_ip(parts[0]):
+                result.append((parts[0], parts[2], None))
+        return result
+
+    def _parse_arp_windows(self, output: str) -> list[tuple[str, Optional[str], Optional[str]]]:
+        # Interface: 192.168.1.100 --- 0xc
+        #   Internet Address      Physical Address      Type
+        #   192.168.1.1           aa-bb-cc-dd-ee-ff     dynamic
+        result = []
+        for line in output.splitlines():
+            line = line.strip()
+            if not line or line.startswith("Interface") or "Internet Address" in line:
+                continue
+            parts = line.split()
+            if len(parts) >= 2 and self._is_ip(parts[0]):
+                mac = parts[1].replace("-", ":") if len(parts[1]) >= 17 else None
+                result.append((parts[0], mac, None))
+        return result
 
     def _get_default_gateway(self) -> Optional[str]:
         """Get default gateway IP address."""

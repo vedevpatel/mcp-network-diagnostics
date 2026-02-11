@@ -348,3 +348,71 @@ class TestWifiDetectionPerOS:
             collector = EdgeCollector()
             result = await collector._get_wifi_stats()
         assert result is None
+
+
+class TestScanLocalNetwork:
+    """Tests for local network scan (ARP table)."""
+
+    def test_parse_arp_macos(self):
+        """Parse macOS arp -a output."""
+        from mcp_network.collectors.edge import EdgeCollector
+
+        collector = EdgeCollector()
+        output = """
+? (192.168.1.1) at aa:bb:cc:dd:ee:ff on en0 ifscope [ethernet]
+router.local (192.168.1.5) at 11:22:33:44:55:66 on en0 ifscope [ethernet]
+"""
+        result = collector._parse_arp_macos(output)
+        assert len(result) == 2
+        assert result[0] == ("192.168.1.1", "aa:bb:cc:dd:ee:ff", None)
+        assert result[1] == ("192.168.1.5", "11:22:33:44:55:66", "router.local")
+
+    def test_parse_arp_linux_ip_neigh(self):
+        """Parse Linux ip neigh show output."""
+        from mcp_network.collectors.edge import EdgeCollector
+
+        collector = EdgeCollector()
+        output = """
+192.168.1.1 lladdr aa:bb:cc:dd:ee:ff REACHABLE
+192.168.1.10 lladdr 11:22:33:44:55:66 STALE
+"""
+        result = collector._parse_arp_linux_ip_neigh(output)
+        assert len(result) == 2
+        assert result[0] == ("192.168.1.1", "aa:bb:cc:dd:ee:ff", None)
+        assert result[1] == ("192.168.1.10", "11:22:33:44:55:66", None)
+
+    def test_parse_arp_windows(self):
+        """Parse Windows arp -a output."""
+        from mcp_network.collectors.edge import EdgeCollector
+
+        collector = EdgeCollector()
+        output = """
+Interface: 192.168.1.100 --- 0xc
+  Internet Address      Physical Address      Type
+  192.168.1.1           aa-bb-cc-dd-ee-ff     dynamic
+  192.168.1.5           11-22-33-44-55-66     dynamic
+"""
+        result = collector._parse_arp_windows(output)
+        assert len(result) == 2
+        assert result[0] == ("192.168.1.1", "aa:bb:cc:dd:ee:ff", None)
+        assert result[1] == ("192.168.1.5", "11:22:33:44:55:66", None)
+
+    def test_scan_local_network_returns_devices(self):
+        """scan_local_network returns sorted list of LocalDevice (mocked ARP)."""
+        from mcp_network.collectors.edge import EdgeCollector, LocalDevice
+
+        collector = EdgeCollector()
+        with patch.object(collector, "_get_arp_table", new_callable=AsyncMock) as mock_arp:
+            mock_arp.return_value = [
+                ("192.168.1.5", "11:22:33:44:55:66", None),
+                ("192.168.1.1", "aa:bb:cc:dd:ee:ff", "router"),
+            ]
+            with patch.object(collector, "_get_default_gateway", return_value="192.168.1.1"):
+                devices = _run(collector.scan_local_network())
+
+        assert len(devices) == 2
+        assert all(isinstance(d, LocalDevice) for d in devices)
+        assert devices[0].ip == "192.168.1.1"
+        assert devices[1].ip == "192.168.1.5"
+        assert devices[0].mac == "aa:bb:cc:dd:ee:ff"
+        assert devices[0].hostname == "router"

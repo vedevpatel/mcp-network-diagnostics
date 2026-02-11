@@ -152,6 +152,31 @@ await trace_path("netflix.com")
 
 ---
 
+### `scan_local_network()`
+
+List devices on your local network (LAN) from the system ARP table.
+
+**Example:**
+```python
+await scan_local_network()
+```
+
+**Returns:**
+```json
+{
+  "devices": [
+    {"ip": "192.168.1.1", "mac": "aa:bb:cc:dd:ee:ff", "hostname": "router.local"},
+    {"ip": "192.168.1.5", "mac": "11:22:33:44:55:66", "hostname": null}
+  ],
+  "count": 2,
+  "note": "Devices are from the system ARP cache (recent traffic only)."
+}
+```
+
+Only hosts your machine has recently communicated with appear (no broadcast ping). Works on macOS, Linux, and Windows.
+
+---
+
 ## How It Works
 
 ### EdgeCollector
@@ -276,7 +301,7 @@ The dashboard and `check_my_connection()` show the **current machine’s** WiFi 
 - [x] WiFi stats for Windows (netsh)
 - [x] Speedtest integration (run_speedtest() tool)
 - [x] Better Windows tracert parsing (handles timeouts, averages latency)
-- [ ] Local network scan (Future: scan local devices)
+- [x] Local network scan (scan_local_network() — ARP table, macOS/Linux/Windows)
 - [ ] AS lookup for hop ownership (Future: identify ISPs by ASN)
 
 ---

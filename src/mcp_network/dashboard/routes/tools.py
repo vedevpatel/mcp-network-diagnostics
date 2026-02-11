@@ -26,6 +26,7 @@ TOOL_DEFINITIONS = [
     {"id": "compare_to_baseline", "label": "Compare to baseline", "category": "consumer", "description": "Compare current connection to stored baseline.", "params": []},
     {"id": "clear_baseline", "label": "Clear baseline", "category": "consumer", "description": "Reset baseline data.", "params": []},
     {"id": "run_speedtest", "label": "Run speedtest", "category": "consumer", "description": "Bandwidth test (requires speedtest-cli).", "params": []},
+    {"id": "scan_local_network", "label": "Scan local network", "category": "consumer", "description": "List devices on your LAN (from ARP table).", "params": []},
     # Operator
     {"id": "list_devices", "label": "List devices", "category": "operator", "description": "List all devices in the topology.", "params": []},
     {"id": "get_device_status", "label": "Device status", "category": "operator", "description": "CPU, memory, interfaces for a device.", "params": [{"name": "device_id", "type": "text", "label": "Device ID", "placeholder": "e.g. R1", "default": ""}]},

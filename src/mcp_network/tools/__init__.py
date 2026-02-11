@@ -2005,6 +2005,38 @@ async def run_speedtest() -> str:
         }, indent=2)
 
 
+@mcp.tool()
+@guarded()
+async def scan_local_network() -> str:
+    """
+    List devices on your local network (LAN).
+
+    Uses the system ARP table, so only hosts your machine has recently
+    communicated with are listed. No broadcast or ping sweep is performed.
+    Works on macOS, Linux, and Windows.
+
+    Returns:
+        JSON with list of devices: ip, optional mac address, optional hostname
+    """
+    from mcp_network.collectors.edge import EdgeCollector
+
+    collector = EdgeCollector()
+    devices = await collector.scan_local_network()
+
+    return json.dumps({
+        "devices": [
+            {
+                "ip": d.ip,
+                "mac": d.mac,
+                "hostname": d.hostname,
+            }
+            for d in devices
+        ],
+        "count": len(devices),
+        "note": "Devices are from the system ARP cache (recent traffic only).",
+    }, indent=2)
+
+
 # ============================================================================
 # Agent Control Tools
 # ============================================================================

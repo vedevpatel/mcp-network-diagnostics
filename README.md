@@ -164,6 +164,7 @@ mcp-network --collector prometheus \
 | `compare_to_baseline()` | Detect anomalies vs historical normal |
 | `clear_baseline()` | Reset baseline data |
 | `run_speedtest()` | Bandwidth test (requires speedtest-cli) |
+| `scan_local_network()` | List devices on your LAN (from ARP table) |
 
 ### Continuous Monitoring Agent
 
