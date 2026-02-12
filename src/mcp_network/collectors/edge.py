@@ -201,7 +201,7 @@ class EdgeCollector:
         else:
              methods.append(("tracert", ["tracert", "-h", "20", "-w", "2000", target]))
 
-        last_error = None
+
 
         for name, cmd in methods:
             try:
@@ -248,8 +248,7 @@ class EdgeCollector:
                 
                 # If we got valid output but 0 hops, it failed
                 
-            except Exception as e:
-                last_error = e
+            except Exception:
                 continue
 
         # If all failed, return empty list (caller handles error generation)
