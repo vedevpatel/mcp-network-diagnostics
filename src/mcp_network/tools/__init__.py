@@ -1479,55 +1479,141 @@ async def trace_path(destination: str) -> str:
             "hint": "Ensure traceroute/mtr is installed and accessible",
         }, indent=2)
 
+    # Resolve GeoIP/ISP info for all hops in parallel
+    from mcp_network.context.geoip import GeoIPResolver
+    resolver = GeoIPResolver()
+    ips = [h.ip for h in hops if h.ip and h.ip != "*"]
+    geo_info = await resolver.resolve_batch(ips)
+
     # Identify bottleneck (highest latency jump)
     bottleneck_hop = None
     max_jump = 0.0
 
     for i in range(1, len(hops)):
-        jump = hops[i].latency_ms - hops[i-1].latency_ms
-        if jump > max_jump:
-            max_jump = jump
-            bottleneck_hop = hops[i]
+        prev_lat = hops[i-1].latency_ms 
+        curr_lat = hops[i].latency_ms
+        # Handle packet loss hops (latency 0 or None)
+        if prev_lat > 0 and curr_lat > 0:
+            jump = curr_lat - prev_lat
+            if jump > max_jump:
+                max_jump = jump
+                bottleneck_hop = hops[i]
 
-    # Format hop list
+    # Format hop list & Build Summary
     hop_list = []
-    for hop in hops:
-        hop_list.append({
+    summary_lines = []
+    summary_lines.append(f"Trace to **{destination}** ({len(hops)} hops):")
+    summary_lines.append("")
+
+    for i, hop in enumerate(hops):
+        # Basic hop info
+        hop_data = {
             "number": hop.number,
             "ip": hop.ip,
             "hostname": hop.hostname,
-            "latency_ms": round(hop.latency_ms, 1),
+            "latency_ms": round(hop.latency_ms, 1) if hop.latency_ms > 0 else None,
             "loss_pct": round(hop.loss_pct, 1) if hop.loss_pct else 0.0,
-            "is_bottleneck": hop == bottleneck_hop,
-        })
+        }
 
-    # Classify segment
-    if bottleneck_hop:
-        if bottleneck_hop.number <= 2:
-            segment = "local_network"
-            explanation = "The bottleneck is in your local network (WiFi or router)"
-        elif bottleneck_hop.number <= 5:
-            segment = "isp"
-            explanation = "The bottleneck is inside your ISP's network"
+        # Enrich with GeoIP
+        info = geo_info.get(hop.ip)
+        if info and info.get("status") == "success":
+            hop_data["location"] = {
+                "city": info.get("city"),
+                "region": info.get("regionName"),
+                "country": info.get("country"),
+            }
+            hop_data["network"] = {
+                "isp": info.get("isp"),
+                "org": info.get("org"),
+                "as": info.get("as"),
+            }
+        
+        hop_list.append(hop_data)
+
+        # specific summary formatting
+        if hop.number == 1 and (hop.ip == "*" or hop.latency_ms < 1):
+             # Skip or be vague about hidden hop 1
+             continue
+
+        line_parts = []
+        
+        # Identity
+        if i == 0:
+             name = "Your device"
+        elif i == 1:
+             name = "Local gateway"
         else:
-            segment = "internet"
-            explanation = "The bottleneck is in the internet path or at the destination"
+            # Use ISP or Org or Hostname
+            name = hop.hostname if hop.hostname and hop.hostname != hop.ip else (hop.ip or "*")
+            if info:
+                if info.get("isp"):
+                     name = f"{info.get('isp')} network"
+                elif info.get("org"):
+                     name = info.get("org")
+
+        # Fallback if name ends up None (shouldn't happen with logic above, but be safe)
+        if not name:
+             name = f"Hop {hop.number}"
+        
+        # Add IP context
+        if hop.ip and hop.ip != "*" and name != hop.ip:
+            name += f" ({hop.ip})"
+            
+        line_parts.append(name)
+        
+        # Latency arrow
+        if hop.latency_ms > 0:
+            line_parts.append(f"→ **{hop.latency_ms:.1f}ms**")
+        else:
+             line_parts.append("→ *Request Timed Out*")
+
+        # Bottleneck warning
+        if hop == bottleneck_hop and max_jump > 10.0: # Only flag significant jumps
+             line_parts.append("⚠️ **BOTTLENECK**")
+             
+        # Location tag
+        if info and info.get("city"):
+            loc = f"[{info.get('city')}, {info.get('country')}]"
+            line_parts.append(loc)
+
+        summary_lines.append(" ".join(line_parts))
+
+    # Add bottleneck summary text
+    # Add bottleneck summary text
+    if bottleneck_hop:
+        summary_lines.append("")
+        summary_lines.append(f"**Key Finding**: The main bottleneck is at hop {bottleneck_hop.number} with a **{max_jump:.1f}ms** latency jump.")
+        
+        if bottleneck_hop.number <= 2:
+             segment = "local_network"
+             explanation = "The bottleneck is in your local network (WiFi or router)"
+             summary_lines.append("This is likely in your local network (WiFi or Router).")
+        elif bottleneck_hop.number <= 5:
+             segment = "isp"
+             explanation = "The bottleneck is inside your ISP's network"
+             summary_lines.append("This appears to be within your ISP's network.")
+        else:
+             segment = "internet"
+             explanation = "The bottleneck is in the internet path or at the destination"
+             summary_lines.append("This is likely in the transit path or destination network.")
     else:
         segment = "unknown"
         explanation = "Path looks healthy overall"
+        summary_lines.append("")
+        summary_lines.append("**Key Finding**: Path looks healthy overall, no significant bottlenecks detected.")
 
     return json.dumps({
+        "summary": "\n".join(summary_lines),
         "destination": destination,
         "hops": hop_list,
         "bottleneck": {
-            "hop_number": bottleneck_hop.number if bottleneck_hop else None,
-            "ip": bottleneck_hop.ip if bottleneck_hop else None,
-            "latency_ms": round(bottleneck_hop.latency_ms, 1) if bottleneck_hop else None,
-            "latency_jump_ms": round(max_jump, 1) if bottleneck_hop else None,
+            "hop": bottleneck_hop.number,
+            "latency_jump_ms": round(max_jump, 1),
             "segment": segment,
             "explanation": explanation,
-        },
-        "total_latency_ms": round(hops[-1].latency_ms, 1) if hops else 0.0,
+        } if bottleneck_hop else None,
+        "total_latency_ms": round(hops[-1].latency_ms, 1) if hops and hops[-1].latency_ms else 0.0,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }, indent=2)
 
