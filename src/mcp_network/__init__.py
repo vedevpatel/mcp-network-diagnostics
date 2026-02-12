@@ -1,5 +1,5 @@
 """MCP Network Diagnostics - AI-powered network troubleshooting."""
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 from mcp_network.tools import (
     check_my_connection,
