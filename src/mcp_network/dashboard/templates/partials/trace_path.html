@@ -10,6 +10,68 @@
         {% endif %}
     </div>
 
+    {% if data.hops %}
+    <div class="trace-visual">
+        <div class="trace-visual-title">Network Path Visualization</div>
+        <div class="trace-flow">
+            <!-- Start Node (User Device) -->
+            <div class="flow-step">
+                <div class="flow-marker">
+                    <div class="flow-dot flow-dot-start"></div>
+                    <div class="flow-line"></div>
+                </div>
+                <div class="flow-card">
+                    <div class="flow-header">
+                        <span class="flow-type">Source</span>
+                        <span class="flow-latency">0 ms</span>
+                    </div>
+                    <div class="flow-main">Your Device</div>
+                </div>
+            </div>
+
+            {% for hop in data.hops %}
+            <div class="flow-step {% if hop.is_bottleneck %}flow-step-bottleneck{% endif %}">
+                <div class="flow-marker">
+                    <div class="flow-dot"></div>
+                    {% if not loop.last %}<div class="flow-line"></div>{% endif %}
+                </div>
+                <div class="flow-card">
+                    <div class="flow-header">
+                        <span class="flow-hop">Hop {{ hop.number }}</span>
+                        <span class="flow-latency {% if hop.is_bottleneck %}flow-latency-bad{% endif %}">
+                            {{ hop.latency_ms }} ms
+                        </span>
+                    </div>
+                    <div class="flow-main">
+                        <span class="flow-ip">{{ hop.ip or '*' }}</span>
+                        {% if hop.hostname %}<span class="flow-host">({{ hop.hostname }})</span>{% endif %}
+                    </div>
+                    {% if hop.location or hop.network %}
+                    <div class="flow-meta">
+                        {% if hop.location %}
+                        <div class="flow-loc">
+                            <span class="icon">📍</span> {{ hop.location.city }}, {{ hop.location.country }}
+                        </div>
+                        {% endif %}
+                        {% if hop.network %}
+                        <div class="flow-net">
+                            <span class="icon">🏢</span> {{ hop.network.isp }}
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                    {% if hop.is_bottleneck %}
+                    <div class="flow-alert">
+                        ⚠️ High Latency Jump
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
     {% if data.error %}
     <div class="issues-card">
         <div class="issues-title">Error</div>
@@ -21,7 +83,8 @@
     {% elif data.bottleneck and data.bottleneck.explanation %}
     <div class="issues-card">
         <div class="issues-title">{{ data.bottleneck.explanation }}</div>
-        <p>Hop {{ data.bottleneck.hop_number }} ({{ data.bottleneck.ip or 'unknown' }}) adds {{ data.bottleneck.latency_jump_ms }}ms delay</p>
+        <p>Hop {{ data.bottleneck.hop_number }} ({{ data.bottleneck.ip or 'unknown' }}) adds {{
+            data.bottleneck.latency_jump_ms }}ms delay</p>
     </div>
     {% else %}
     <div class="issues-card issues-card-healthy">
@@ -31,23 +94,240 @@
     {% endif %}
 
     {% if data.hops %}
-    <div class="hop-list">
-        <div class="hop-list-header">
-            <span class="hop-col-num">#</span>
-            <span class="hop-col-ip">IP Address</span>
-            <span class="hop-col-host">Hostname</span>
-            <span class="hop-col-latency">Latency</span>
-            <span class="hop-col-loss">Loss</span>
-        </div>
-        {% for hop in data.hops %}
-        <div class="hop-row {% if hop.is_bottleneck %}hop-bottleneck{% endif %}">
-            <span class="hop-col-num">{{ hop.number }}</span>
-            <span class="hop-col-ip">{{ hop.ip or '*' }}</span>
-            <span class="hop-col-host">{{ hop.hostname or '-' }}</span>
-            <span class="hop-col-latency">{{ hop.latency_ms if hop.latency_ms is not none else '?' }} ms</span>
-            <span class="hop-col-loss">{% if hop.loss_pct %}{{ hop.loss_pct }}%{% else %}-{% endif %}</span>
-        </div>
-        {% endfor %}
+    <div class="hop-list-toggle">
+        <details>
+            <summary>View Detailed Table</summary>
+            <div class="hop-list">
+                <div class="hop-list-header">
+                    <span class="hop-col-num">#</span>
+                    <span class="hop-col-ip">IP Address</span>
+                    <span class="hop-col-host">Hostname</span>
+                    <span class="hop-col-loc">Location</span>
+                    <span class="hop-col-net">Network</span>
+                    <span class="hop-col-latency">Latency</span>
+                    <span class="hop-col-loss">Loss</span>
+                </div>
+                {% for hop in data.hops %}
+                <div class="hop-row {% if hop.is_bottleneck %}hop-bottleneck{% endif %}">
+                    <span class="hop-col-num">{{ hop.number }}</span>
+                    <span class="hop-col-ip">{{ hop.ip or '*' }}</span>
+                    <span class="hop-col-host">{{ hop.hostname or '-' }}</span>
+                    <span class="hop-col-loc">
+                        {% if hop.location %}
+                        {{ hop.location.city }}, {{ hop.location.country }}
+                        {% else %}
+                        -
+                        {% endif %}
+                    </span>
+                    <span class="hop-col-net">
+                        {% if hop.network %}
+                        {{ hop.network.isp }} ({{ hop.network.as }})
+                        {% else %}
+                        -
+                        {% endif %}
+                    </span>
+                    <span class="hop-col-latency">{{ hop.latency_ms if hop.latency_ms is not none else '?' }} ms</span>
+                    <span class="hop-col-loss">{% if hop.loss_pct %}{{ hop.loss_pct }}%{% else %}-{% endif %}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </details>
     </div>
     {% endif %}
 </div>
+
+<style>
+    /* Flowchart Styles */
+    .trace-visual {
+        margin-bottom: 25px;
+        padding: 20px;
+        background: #161b22;
+        border: 1px solid #30363d;
+        border-radius: 8px;
+    }
+
+    .trace-visual-title {
+        font-weight: 600;
+        margin-bottom: 20px;
+        color: #8b949e;
+        text-transform: uppercase;
+        font-size: 0.8em;
+        letter-spacing: 0.5px;
+    }
+
+    .trace-flow {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .flow-step {
+        display: flex;
+        gap: 20px;
+        position: relative;
+        align-items: stretch;
+        /* Ensure marker stretches to full height */
+    }
+
+    .flow-marker {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 20px;
+        flex-shrink: 0;
+    }
+
+    .flow-dot {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: #30363d;
+        border: 3px solid #161b22;
+        box-shadow: 0 0 0 1px #30363d;
+        z-index: 2;
+        flex-shrink: 0;
+        /* Prevent dot from shrinking */
+    }
+
+    .flow-dot-start {
+        background: #58a6ff;
+        box-shadow: 0 0 0 1px #58a6ff;
+    }
+
+    .flow-step-bottleneck .flow-dot {
+        background: #ef4444;
+        /* Red */
+        box-shadow: 0 0 0 1px #ef4444;
+    }
+
+    .flow-line {
+        flex-grow: 1;
+        width: 2px;
+        background: #30363d;
+        margin-top: -2px;
+        margin-bottom: -2px;
+        min-height: 20px;
+    }
+
+    .flow-step:last-child .flow-line {
+        display: none;
+    }
+
+    .flow-card {
+        flex-grow: 1;
+        background: #0d1117;
+        border: 1px solid #30363d;
+        border-radius: 6px;
+        padding: 12px;
+        margin-bottom: 20px;
+        font-size: 0.9em;
+        position: relative;
+        top: -6px;
+        /* Align with dot */
+    }
+
+    .flow-step-bottleneck .flow-card {
+        border-color: rgba(239, 68, 68, 0.5);
+        /* Light red border */
+        background: rgba(239, 68, 68, 0.05);
+        /* Very light red bg */
+    }
+
+    .flow-header {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 6px;
+        font-size: 0.85em;
+        color: #8b949e;
+    }
+
+    .flow-latency {
+        font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+        color: #e6edf3;
+        font-weight: 500;
+        background: #161b22;
+        padding: 2px 6px;
+        border-radius: 4px;
+        border: 1px solid #30363d;
+    }
+
+    .flow-latency-bad {
+        color: #ef4444;
+        border-color: rgba(239, 68, 68, 0.5);
+    }
+
+    .flow-main {
+        font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+        font-size: 1.1em;
+        margin-bottom: 8px;
+        color: #e6edf3;
+    }
+
+    .flow-host {
+        font-size: 0.85em;
+        color: #8b949e;
+    }
+
+    .flow-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 15px;
+        font-size: 0.9em;
+        color: #8b949e;
+        margin-top: 8px;
+        padding-top: 8px;
+        border-top: 1px solid #30363d;
+    }
+
+    .flow-loc,
+    .flow-net {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .flow-alert {
+        margin-top: 10px;
+        color: #ef4444;
+        font-weight: 600;
+        font-size: 0.9em;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .hop-list-toggle {
+        margin-top: 20px;
+        border-top: 1px solid #30363d;
+        padding-top: 20px;
+    }
+
+    .hop-list-toggle summary {
+        cursor: pointer;
+        color: #58a6ff;
+        font-weight: 500;
+        margin-bottom: 10px;
+    }
+
+    /* Existing table styles adjustments */
+    .hop-list-header,
+    .hop-row {
+        grid-template-columns: 40px 140px 1fr 150px 150px 80px 60px !important;
+    }
+
+    /* Responsive adjustments */
+    @media (max-width: 1000px) {
+
+        .hop-list-header,
+        .hop-row {
+            grid-template-columns: 40px 120px 1fr 100px 100px 70px 50px !important;
+            font-size: 0.9em;
+        }
+
+        .hop-col-loc,
+        .hop-col-net {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+    }
+</style>

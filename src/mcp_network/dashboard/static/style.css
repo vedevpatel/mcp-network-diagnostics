@@ -60,8 +60,17 @@
 }
 
 @keyframes status-pulse {
-    0%, 100% { opacity: 0.5; transform: scale(1); }
-    50% { opacity: 0; transform: scale(1.4); }
+
+    0%,
+    100% {
+        opacity: 0.5;
+        transform: scale(1);
+    }
+
+    50% {
+        opacity: 0;
+        transform: scale(1.4);
+    }
 }
 
 .system-status-dot.status-stopped {
@@ -99,7 +108,9 @@ body {
     padding: 20px;
 }
 
-h1, h2, h3 {
+h1,
+h2,
+h3 {
     color: #f0f6fc;
 }
 
@@ -131,7 +142,8 @@ table {
     border-collapse: collapse;
 }
 
-th, td {
+th,
+td {
     text-align: left;
     padding: 8px;
     border-bottom: 1px solid #30363d;
@@ -411,7 +423,7 @@ th {
 
 .tools-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    grid-template-columns: repeat(3, 1fr) !important;
     gap: 20px;
 }
 
@@ -533,7 +545,9 @@ th {
 }
 
 @keyframes tool-spin {
-    to { transform: rotate(360deg); }
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 .btn-run {
@@ -635,12 +649,36 @@ th {
 }
 
 /* Developer page */
-.developer-page { padding-bottom: 2rem; }
-.developer-title { font-size: 24px; font-weight: 600; margin-bottom: 8px; }
-.developer-intro { color: #8b949e; margin-bottom: 24px; }
-.dev-section { margin-bottom: 28px; }
-.dev-section h3 { font-size: 18px; margin-bottom: 12px; }
-.dev-section h4 { font-size: 15px; margin: 16px 0 8px; color: #8b949e; }
+.developer-page {
+    padding-bottom: 2rem;
+}
+
+.developer-title {
+    font-size: 24px;
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+
+.developer-intro {
+    color: #8b949e;
+    margin-bottom: 24px;
+}
+
+.dev-section {
+    margin-bottom: 28px;
+}
+
+.dev-section h3 {
+    font-size: 18px;
+    margin-bottom: 12px;
+}
+
+.dev-section h4 {
+    font-size: 15px;
+    margin: 16px 0 8px;
+    color: #8b949e;
+}
+
 .dev-code {
     background: #0d1117;
     border: 1px solid #30363d;
@@ -650,14 +688,49 @@ th {
     overflow-x: auto;
     margin: 8px 0 16px;
 }
-.role-list { margin: 8px 0 16px; padding-left: 20px; }
-.role-list li { margin-bottom: 4px; }
-.tools-by-role { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
-.role-block { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 12px 16px; }
-.role-name { font-weight: 600; margin-bottom: 8px; text-transform: capitalize; }
-.tool-list { list-style: none; padding: 0; margin: 0; font-size: 12px; }
-.tool-list li { margin-bottom: 2px; }
-.tool-list code { font-size: 11px; }
+
+.role-list {
+    margin: 8px 0 16px;
+    padding-left: 20px;
+}
+
+.role-list li {
+    margin-bottom: 4px;
+}
+
+.tools-by-role {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 16px;
+}
+
+.role-block {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    padding: 12px 16px;
+}
+
+.role-name {
+    font-weight: 600;
+    margin-bottom: 8px;
+    text-transform: capitalize;
+}
+
+.tool-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    font-size: 12px;
+}
+
+.tool-list li {
+    margin-bottom: 2px;
+}
+
+.tool-list code {
+    font-size: 11px;
+}
 
 /* ============================================================================
    Human-friendly tool output styles
@@ -818,7 +891,7 @@ th {
     color: #8b949e;
 }
 
-.context-note + .context-note {
+.context-note+.context-note {
     margin-top: 6px;
 }
 

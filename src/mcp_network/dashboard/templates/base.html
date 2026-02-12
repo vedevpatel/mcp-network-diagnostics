@@ -1,13 +1,18 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}MCP Network Diagnostics{% endblock %}</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/style.css?v=2">
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -74,7 +79,8 @@
             transition: background 0.15s ease, color 0.15s ease;
         }
 
-        .nav-link:hover, .nav-link.active {
+        .nav-link:hover,
+        .nav-link.active {
             background: #21262d;
             color: #e6edf3;
             text-decoration: none;
@@ -225,22 +231,51 @@
             font-weight: 600;
         }
 
-        .badge-critical { background: #da3633; color: #fff; }
-        .badge-warning { background: #d29922; color: #000; }
-        .badge-info { background: #1f6feb; color: #fff; }
-        .badge-success { background: #2da44e; color: #fff; }
+        .badge-critical {
+            background: #da3633;
+            color: #fff;
+        }
+
+        .badge-warning {
+            background: #d29922;
+            color: #000;
+        }
+
+        .badge-info {
+            background: #1f6feb;
+            color: #fff;
+        }
+
+        .badge-success {
+            background: #2da44e;
+            color: #fff;
+        }
 
         .health-score {
             font-size: 48px;
             font-weight: 700;
         }
 
-        .health-good { color: #2da44e; }
-        .health-warning { color: #d29922; }
-        .health-critical { color: #da3633; }
+        .health-good {
+            color: #2da44e;
+        }
 
-        a { color: #58a6ff; text-decoration: none; }
-        a:hover { text-decoration: underline; }
+        .health-warning {
+            color: #d29922;
+        }
+
+        .health-critical {
+            color: #da3633;
+        }
+
+        a {
+            color: #58a6ff;
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
 
         .btn {
             display: inline-block;
@@ -275,6 +310,7 @@
         }
     </style>
 </head>
+
 <body>
     <header>
         <div class="container">
@@ -286,11 +322,16 @@
                 <div class="nav-links" role="navigation" aria-label="Main">
                     <a href="/" class="nav-link {% if request.url.path == '/' %}active{% endif %}">Overview</a>
                     <a href="/tools" class="nav-link {% if '/tools' in request.url.path %}active{% endif %}">Tools</a>
-                    <a href="/devices" class="nav-link {% if '/devices' in request.url.path %}active{% endif %}">Devices</a>
-                    <a href="/incidents" class="nav-link {% if '/incidents' in request.url.path %}active{% endif %}">Incidents</a>
-                    <a href="/intents" class="nav-link {% if '/intents' in request.url.path %}active{% endif %}">Intents</a>
-                    <a href="/developer" class="nav-link {% if '/developer' in request.url.path %}active{% endif %}">Developer</a>
-                    <a href="/settings" class="nav-link {% if '/settings' in request.url.path %}active{% endif %}">Settings</a>
+                    <a href="/devices"
+                        class="nav-link {% if '/devices' in request.url.path %}active{% endif %}">Devices</a>
+                    <a href="/incidents"
+                        class="nav-link {% if '/incidents' in request.url.path %}active{% endif %}">Incidents</a>
+                    <a href="/intents"
+                        class="nav-link {% if '/intents' in request.url.path %}active{% endif %}">Intents</a>
+                    <a href="/developer"
+                        class="nav-link {% if '/developer' in request.url.path %}active{% endif %}">Developer</a>
+                    <a href="/settings"
+                        class="nav-link {% if '/settings' in request.url.path %}active{% endif %}">Settings</a>
                 </div>
 
                 <div class="nav-right">
@@ -305,7 +346,8 @@
                     {% endif %}
                 </div>
             </nav>
-            <div id="system-status" class="system-status-wrap" hx-get="/partials/status" hx-trigger="load, every 15s" hx-swap="innerHTML">
+            <div id="system-status" class="system-status-wrap" hx-get="/partials/status" hx-trigger="load, every 15s"
+                hx-swap="innerHTML">
                 <div class="system-status-bar" role="status"><span class="system-status-value">Loading…</span></div>
             </div>
         </div>
@@ -315,4 +357,5 @@
         {% block content %}{% endblock %}
     </main>
 </body>
+
 </html>
