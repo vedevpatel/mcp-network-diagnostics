@@ -1,11 +1,9 @@
 """
 Geolocation and ASN lookup context provider.
 """
-import asyncio
 import logging
 import aiohttp
-from typing import Dict, List, Optional
-from datetime import datetime, timedelta
+from typing import Dict, List
 
 logger = logging.getLogger(__name__)
 
@@ -77,9 +75,12 @@ class GeoIPResolver:
     def _is_private(self, ip: str) -> bool:
         """Check if IP is private/local."""
         # Simple check for common private ranges
-        if ip.startswith("127.") or ip == "::1": return True
-        if ip.startswith("10."): return True
-        if ip.startswith("192.168."): return True
+        if ip.startswith("127.") or ip == "::1":
+            return True
+        if ip.startswith("10."):
+            return True
+        if ip.startswith("192.168."):
+            return True
         if ip.startswith("172."):
             # 172.16.x.x to 172.31.x.x
             parts = ip.split(".")
