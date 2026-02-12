@@ -63,4 +63,71 @@
     </section>
     {% endfor %}
 </div>
+
+<script>
+    // Persistence for tool results
+    document.addEventListener('DOMContentLoaded', () => {
+        // Restore results from localStorage
+        const results = document.querySelectorAll('.tool-result');
+        results.forEach(div => {
+            const toolId = div.id.replace('result-', '');
+            const saved = localStorage.getItem('mcp_tool_result_' + toolId);
+            if (saved) {
+                div.innerHTML = saved;
+                // Add clear button if not already there (though saved HTML likely has it if we add it during save)
+                ensureClearButton(div, toolId);
+            }
+        });
+
+        // Listen for HTMX swaps to save results
+        document.body.addEventListener('htmx:afterSwap', (evt) => {
+            const target = evt.detail.target;
+            if (target.classList.contains('tool-result')) {
+                const toolId = target.id.replace('result-', '');
+                
+                // Add a clear button before saving
+                ensureClearButton(target, toolId);
+
+                // Save to localStorage
+                localStorage.setItem('mcp_tool_result_' + toolId, target.innerHTML);
+            }
+        });
+    });
+
+    function ensureClearButton(targetDiv, toolId) {
+        if (targetDiv.querySelector('.btn-clear-result')) return;
+        
+        // If content is just the placeholder, don't add clear button
+        if (targetDiv.querySelector('.tool-result-placeholder')) return;
+
+        const clearBtn = document.createElement('button');
+        clearBtn.className = 'btn-clear-result';
+        clearBtn.innerText = 'Clear';
+        clearBtn.onclick = () => {
+             localStorage.removeItem('mcp_tool_result_' + toolId);
+             targetDiv.innerHTML = '<span class="tool-result-placeholder">Output will appear here.</span>';
+        };
+        
+        // Prepend or append? Let's prepend to be visible
+        targetDiv.insertBefore(clearBtn, targetDiv.firstChild);
+    }
+</script>
+
+<style>
+    .btn-clear-result {
+        display: block;
+        margin-bottom: 10px;
+        background: none;
+        border: 1px solid var(--border-color);
+        color: var(--text-muted);
+        padding: 4px 8px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 0.8em;
+    }
+    .btn-clear-result:hover {
+        background: var(--bg-hover);
+        color: var(--text-color);
+    }
+</style>
 {% endblock %}
