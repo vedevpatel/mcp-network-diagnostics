@@ -186,35 +186,74 @@ class EdgeCollector:
             )
 
     async def _run_traceroute(self, target: str) -> list[HopResult]:
-        """Run traceroute and parse results."""
-        try:
-            if self.platform == "Windows":
-                cmd = ["tracert", "-h", "20", "-w", "2000", target]
-            else:
-                # Try mtr first (better output), fall back to traceroute
-                if await self._command_exists("mtr"):
-                    cmd = ["mtr", "--report", "--report-cycles", "3", "--json", target]
+        """Run traceroute with fallbacks (mtr -> traceroute -I -> traceroute)."""
+        methods = []
+        
+        # 1. mtr (best data)
+        if await self._command_exists("mtr"):
+            methods.append(("mtr", ["mtr", "--report", "--report-cycles", "2", "--json", target]))
+            
+        # 2. traceroute (ICMP) - often works where UDP is blocked
+        # macOS/Linux often require sudo for -I, but sometimes SUID allows it
+        if self.platform != "Windows":
+             methods.append(("traceroute_icmp", ["traceroute", "-I", "-m", "20", "-q", "1", "-w", "2", target]))
+             methods.append(("traceroute_udp", ["traceroute", "-m", "20", "-q", "1", "-w", "2", target]))
+        else:
+             methods.append(("tracert", ["tracert", "-h", "20", "-w", "2000", target]))
+
+        last_error = None
+
+        for name, cmd in methods:
+            try:
+                # Use a specific timeout per attempt
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                
+                # mtr takes longer; standard traceroute with -w 2 should be faster per hop but can stall
+                timeout = 20.0 if name == "mtr" else 45.0
+                
+                try:
+                    stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+                except asyncio.TimeoutError:
+                    if proc.returncode is None:
+                        try:
+                            proc.kill()
+                        except ProcessLookupError:
+                            pass
+                    # If we timed out but have some output, maybe we can use it? 
+                    # Usually better to just fail over to next method if it hung completely.
+                    continue
+
+                output = stdout.decode()
+                error_out = stderr.decode()
+
+                # Check for permission error (common with -I)
+                if "Operation not permitted" in error_out or "Socket not open" in error_out:
+                    continue
+
+                hops = []
+                if name == "mtr":
+                    hops = self._parse_mtr_json(output)
+                elif name == "tracert":
+                    hops = self._parse_tracert(output)
                 else:
-                    cmd = ["traceroute", "-m", "20", "-q", "1", target]
+                    hops = self._parse_traceroute(output)
 
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=60.0)
+                # If we got at least one hop beyond local gateway, consider it a success/partial success
+                if hops:
+                    return hops
+                
+                # If we got valid output but 0 hops, it failed
+                
+            except Exception as e:
+                last_error = e
+                continue
 
-            # Parse based on command used
-            if "mtr" in cmd[0] and "--json" in cmd:
-                return self._parse_mtr_json(stdout.decode())
-            elif self.platform == "Windows":
-                return self._parse_tracert(stdout.decode())
-            else:
-                return self._parse_traceroute(stdout.decode())
-
-        except (asyncio.TimeoutError, Exception):
-            # Return empty traceroute on failure
-            return []
+        # If all failed, return empty list (caller handles error generation)
+        return []
 
     async def _ping(self, target: str, count: int = 5) -> tuple[float, float]:
         """Ping target and return (avg_latency_ms, loss_pct).
